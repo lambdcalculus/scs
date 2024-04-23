@@ -63,7 +63,7 @@ type Client struct {
 	logger *logger.Logger
 }
 
-// Makes a new client over a TCP connection.
+// Makes a new client over a TCP connection. The client will log to the specified logger.
 func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 	ipid := hashIP(conn.RemoteAddr())
 	client := &Client{
@@ -84,7 +84,7 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 	return client
 }
 
-// Makes a new client over a WebSocket connection.
+// Makes a new client over a WebSocket connection. The client will log to the specified logger.
 func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
 	ipid := hashIP(conn.RemoteAddr())
 	return &Client{
@@ -340,9 +340,10 @@ func (c *Client) UpdateBackground() {
 func (c *Client) UpdateSong() {
 	switch c.Type() {
 	case AOClient:
-		// We send this as though the room itself has played the song.
+        // TODO: using the spectator CID makes it so no message is displayed.
+        // this might not be the best thing, we e.g. say the room itself plays the song, etc.
 		c.WriteAO("MC", c.Room().Song(), // Song name.
-			strconv.Itoa(room.SpectatorCID), // CID. Will be ignored by 2.6+ since we give the showname.
+			strconv.Itoa(room.SpectatorCID), // CID.
 			c.Room().Name(),                 // Showname. We're using the room's name.
 			"1",                             // Loop
 			"0",                             // Channel 0 (default for BGM).

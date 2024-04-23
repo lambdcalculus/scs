@@ -103,7 +103,6 @@ type user struct {
 }
 
 // MakeRooms creates a list of rooms according to the room configuration.
-// Note: this will also read the character lists and the music configuration.
 func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, error) {
 	// TODO: warn about non-existant lists/adjancecies?
 	roomConf, err := config.ReadRooms()
@@ -148,8 +147,6 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 				fmt.Sprintf("log/room/%v.log", strings.ReplaceAll(strings.ToLower(conf.Name), " ", "_"))),
 		})
 	}
-
-	// We hijack the first room's logger for this. Want to avoid using the global logger.
 
 	// Configure adjacencies.
 	for i, conf := range roomConf.Confs {
@@ -203,7 +200,7 @@ func (r *Room) Leave(uid int) {
 		// shouldn't need an out-of-bounds check
 		r.chars[u.charID].taken = false
 	}
-	r.deleteUser(u.userID)
+	r.removeUser(u.userID)
 	r.logger.Debugf("UID %v left, was CID %v.", u.userID, u.charID)
 }
 
@@ -544,7 +541,7 @@ func (r *Room) getUser(uid int) *user {
 	return &user{SpectatorCID, invalidUID}
 }
 
-func (r *Room) deleteUser(uid int) {
+func (r *Room) removeUser(uid int) {
 	for i, u := range r.users {
 		if u.userID == uid {
 			// Order doesn't matter, so we can do this.

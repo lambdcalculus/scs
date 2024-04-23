@@ -16,7 +16,6 @@ import (
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
-// TODO: consider getting rid of the struct and just having these as globals
 type SCServer struct {
 	config config.Server
 	rooms  []*room.Room
