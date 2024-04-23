@@ -1,0 +1,96 @@
+[[room]]
+# The name of the room.
+name = "Lobby"
+
+# The default background of the room.
+background = "RV - Center Lobby"
+
+# The description of the room.
+description = "The lobby."
+
+# Which character lists from `characters.toml` to include in the room's char list.
+# If "all" is in the list, then it will use all of them.
+character_lists = ["all"]
+
+# Which song categories from `music.toml` to include in the room's char list.
+# If "all" is in the list, then it will use all of them.
+song_categories = ["all"]
+
+# Which rooms are adjacent to this one, i.e., that can be seen and accessed from this one.
+# If "all" is in the list, then all rooms will considered adjacent.
+#
+# Note: adjacency is NOT necessarily reflexive. I.e., if Room A has Room B in its list but Room B
+# does not have Room A in its list, then Room B will be accessible from Room A but Room A will not
+# be accessible from Room B. Both need to have each other in their lists for the symmetry.
+adjacent_rooms = ["Lounge", "Hub"]
+
+[[room]]
+name = "Lounge"
+background = "RV - Therapist Office"
+description = "The lounge."
+
+character_lists = ["all"]
+song_categories = ["all"]
+
+adjacent_rooms = ["Lobby"]
+
+[[room]]
+name = "Hub"
+background = "RV - Top Floor Hallway"
+description = "The Hub. Connects to other areas."
+
+character_lists = ["all"]
+song_categories = ["all"]
+
+adjacent_rooms = [ "Lobby", "Ace Attorney", "Danganronpa", "Your Turn To Die",
+                   "AA and DR", "DR and YTTD"]
+
+[[room]]
+name = "Ace Attorney"
+background = "gs4"
+description = "Only Ace Attorney music and chars here."
+
+character_lists = ["Ace Attorney"]
+song_categories = ["Ace Attorney"]
+
+adjacent_rooms = ["Hub", "AA and DR"]
+
+[[room]]
+name = "Danganronpa"
+background = "V3 Trial"
+description = "Only Danganronpa music and chars here."
+
+character_lists = ["Danganronpa"]
+song_categories = ["Danganronpa"]
+
+adjacent_rooms = ["Hub", "AA and DR", "DR and YTTD"]
+
+[[room]]
+name = "Your Turn To Die"
+background = "Trial 2"
+description = "Only YTTD music and chars here."
+
+character_lists = ["Your Turn To Die"]
+song_categories = ["Your Turn To Die"]
+
+adjacent_rooms = ["Hub", "DR and YTTD"]
+
+[[room]]
+name = "AA and DR"
+background = "gs4"
+description = "AA and DR music and chars here."
+
+character_lists = ["Ace Attorney", "Danganronpa"]
+song_categories = ["Ace Attorney", "Danganronpa"]
+
+adjacent_rooms = ["Hub", "Ace Attorney", "Danganronpa"]
+
+[[room]]
+name = "DR and YTTD"
+background = "V3 Trial"
+description = "DR and YTTD music and chars here."
+
+character_lists = ["Danganronpa", "Your Turn To Die"]
+song_categories = ["Danganronpa", "Your Turn To Die"]
+
+adjacent_rooms = ["Hub", "Danganronpa", "Your Turn To Die"]

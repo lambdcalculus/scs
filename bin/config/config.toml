@@ -1,0 +1,24 @@
+# The name of the server.
+name = "Test Server"
+
+# The server's description.
+description = "The quick brown fox jumps over the lazy dog."
+
+# The maximum allowed amount of players.
+max_players = 100
+
+# The port to use for WebSocket connections (can be both AO or SpriteChat clients).
+ws_port = 8084
+
+# The port to use for raw TCP connections (only used by AO clients).
+legacy_port = 8083
+
+# Whether to allow AO clients to join.
+allow_ao = true
+
+# The username the server will use for server OOC messages.
+server_username = "SCS"
+
+# The maximum size for usernames and messages (both IC and OOC).
+max_msg_size = 100
+max_name_size = 20

@@ -1,0 +1,16 @@
+# The characters configuration is composed of lists of characters.
+# The lists are then used in `room.toml` to compose each room's character list.
+# Each list has a name and a list of character names, which should correspond to the file names for the characters in the client.
+
+[[list]]
+name = "Ace Attorney"
+characters = ["Phoenix", "Miles", "Apollo"]
+
+[[list]]
+name = "Danganronpa"
+characters = ["Monokuma V3", "Chiaki Nanami PNG", "Chihiro Fujisaki PNG"]
+
+[[list]]
+name = "Your Turn To Die"
+characters = ["Sara Chidoun (YTTD)", "Sou Hiyori (YTTD)", "Kazumi Mishima (YTTD)"]
+

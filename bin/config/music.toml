@@ -1,0 +1,22 @@
+# The music configuration is composed of categories of songs.
+# The categories are then used in `room.toml` to compose each room's music list.
+# Each category has a name and a list of song names, which should correspond to the file names for the songs in the client (or to URLs for streaming).
+
+[[category]]
+name = "Ace Attorney"
+songs = [ "Ace Attorney/Pursuit/[AA] Pursuit.opus",
+          "Ace Attorney/Pursuit/[JFA] Pursuit.opus",
+          "Ace Attorney/Objection/[AA] Objection.opus",
+          "Ace Attorney/Objection/[JFA] Objection.opus"]
+
+[[category]]
+name = "Danganronpa"
+songs = [ "DANGANRONPA V3.opus",
+          "Class Trial (Dawn Edition).opus",
+          "Climax Re-enactment V3.opus"]
+
+[[category]]
+name = "Your Turn To Die"
+songs = [ "YTTD - Gate of Hell.mp3",
+          "YTTD - Majority Rule.mp3",
+          "YTTD - Not So, Sou B.mp3"]
