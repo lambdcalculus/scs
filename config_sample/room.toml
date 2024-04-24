@@ -1,28 +1,49 @@
+# This file defines the configuration for each room. To add a room, type [[room]]
+# and then list the room's attributes.
+
 [[room]]
 # The name of the room.
+# Default value: "Unknown".
 name = "Lobby"
 
 # The default background of the room.
+# Default value: "".
 background = "RV - Center Lobby"
 
 # The description of the room.
+# Default value: "".
 description = "The lobby."
 
 # Which character lists from `characters.toml` to include in the room's char list.
 # If "all" is in the list, then it will use all of them.
+# Default value: ["all"].
 character_lists = ["all"]
 
 # Which song categories from `music.toml` to include in the room's char list.
 # If "all" is in the list, then it will use all of them.
+# Default value: ["all"].
 song_categories = ["all"]
 
 # Which rooms are adjacent to this one, i.e., that can be seen and accessed from this one.
 # If "all" is in the list, then all rooms will considered adjacent.
 #
-# Note: adjacency is NOT necessarily reflexive. I.e., if Room A has Room B in its list but Room B
+# Note: adjacency is NOT necessarily symmetric. I.e., if Room A has Room B in its list but Room B
 # does not have Room A in its list, then Room B will be accessible from Room A but Room A will not
 # be accessible from Room B. Both need to have each other in their lists for the symmetry.
+# Default value: [].
 adjacent_rooms = ["Lounge", "Hub"]
+
+# The methods which will be used for logging this room's events.
+# Available methods are:
+#    * "terminal" - will log to standard output (i.e. terminal).
+#    * "file"     - will log to the file "log/room/room_name.log" in relation to the server executable.
+#                 The room name will be formatted in lower case and spaces will turn into underlines.
+# Default value: ["file"].
+log_methods = ["terminal", "file"]
+
+# Whether to log debugging messages. They tend to be very verbose/unnecessary for normal usage.
+# Default value: false.
+log_debug = true
 
 [[room]]
 name = "Lounge"
@@ -33,6 +54,9 @@ character_lists = ["all"]
 song_categories = ["all"]
 
 adjacent_rooms = ["Lobby"]
+
+log_methods = ["terminal", "file"]
+log_debug = true
 
 [[room]]
 name = "Hub"
@@ -45,6 +69,9 @@ song_categories = ["all"]
 adjacent_rooms = [ "Lobby", "Ace Attorney", "Danganronpa", "Your Turn To Die",
                    "AA and DR", "DR and YTTD"]
 
+log_methods = ["terminal", "file"]
+log_debug = true
+
 [[room]]
 name = "Ace Attorney"
 background = "gs4"
@@ -54,6 +81,9 @@ character_lists = ["Ace Attorney"]
 song_categories = ["Ace Attorney"]
 
 adjacent_rooms = ["Hub", "AA and DR"]
+
+log_methods = ["terminal", "file"]
+log_debug = true
 
 [[room]]
 name = "Danganronpa"
@@ -65,6 +95,9 @@ song_categories = ["Danganronpa"]
 
 adjacent_rooms = ["Hub", "AA and DR", "DR and YTTD"]
 
+log_methods = ["terminal", "file"]
+log_debug = true
+
 [[room]]
 name = "Your Turn To Die"
 background = "Trial 2"
@@ -74,6 +107,9 @@ character_lists = ["Your Turn To Die"]
 song_categories = ["Your Turn To Die"]
 
 adjacent_rooms = ["Hub", "DR and YTTD"]
+
+log_methods = ["terminal", "file"]
+log_debug = true
 
 [[room]]
 name = "AA and DR"
@@ -85,6 +121,9 @@ song_categories = ["Ace Attorney", "Danganronpa"]
 
 adjacent_rooms = ["Hub", "Ace Attorney", "Danganronpa"]
 
+log_methods = ["terminal", "file"]
+log_debug = true
+
 [[room]]
 name = "DR and YTTD"
 background = "V3 Trial"
@@ -94,3 +133,6 @@ character_lists = ["Danganronpa", "Your Turn To Die"]
 song_categories = ["Danganronpa", "Your Turn To Die"]
 
 adjacent_rooms = ["Hub", "Danganronpa", "Your Turn To Die"]
+
+log_methods = ["terminal", "file"]
+log_debug = true

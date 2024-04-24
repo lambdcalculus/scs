@@ -12,7 +12,7 @@ import (
 type LogLevel int
 
 const (
-	LevelTrace = iota
+	LevelTrace LogLevel = iota
 	LevelDebug
 	LevelInfo
 	LevelWarning
@@ -26,7 +26,6 @@ var levelString = map[LogLevel]string{
 	LevelInfo:    "  INFO      ",
 	LevelWarning: "  WARNING   ",
 	LevelError:   "  ERROR  !  ",
-	// TODO: consider adding LevelCritical?
 	LevelFatal:   "  FATAL !!! ",
 }
 
@@ -77,10 +76,10 @@ func SetLogger(logger *Logger) {
 // NewLogger creates a logger that logs at the passed level and to
 // the passed io.Writer's. It formats messages according to `fmt`.
 // If `nil` is passed for `fmt`, [DefaultFormatter] is used.
-func NewLogger(fmt FormatFunc, lvl LogLevel, writers ...io.Writer, ) *Logger {
-    if fmt == nil {
-        fmt = DefaultFmt
-    }
+func NewLogger(fmt FormatFunc, lvl LogLevel, writers ...io.Writer) *Logger {
+	if fmt == nil {
+		fmt = DefaultFmt
+	}
 
 	return &Logger{
 		level:   lvl,
@@ -124,23 +123,25 @@ func NewLoggerOutputs(level LogLevel, fmt FormatFunc, outputs ...string) *Logger
 			logPath = path.Join(execDir, out)
 		}
 
+		// Make the directories on the way.
+		// If this fails, opening the file will fail too.
+		os.MkdirAll(path.Dir(logPath), os.ModePerm)
+
 		logFile, err := os.OpenFile(logPath,
 			os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0660)
 		if err != nil {
 			Errorf("logger: Couldn't open/create log file at %v (%v). Will not log to this file.", out, err.Error())
 			continue
 		}
-
 		outs = append(outs, logFile)
 	}
-
 	return NewLogger(fmt, level, outs...)
 }
 
 // Log formats a message and writes to the Logger's outputs if the level is appropriate.
 func (logger *Logger) Log(level LogLevel, msg string) {
-    // Format message right away in case a timestamp is used.
-    s := logger.fmt(msg, level)
+	// Format message right away in case a timestamp is used.
+	s := logger.fmt(msg, level)
 
 	if logger.level <= level {
 		for i, out := range logger.outputs {

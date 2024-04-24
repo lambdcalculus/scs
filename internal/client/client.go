@@ -340,8 +340,8 @@ func (c *Client) UpdateBackground() {
 func (c *Client) UpdateSong() {
 	switch c.Type() {
 	case AOClient:
-        // TODO: using the spectator CID makes it so no message is displayed.
-        // this might not be the best thing, we e.g. say the room itself plays the song, etc.
+		// TODO: using the spectator CID makes it so no message is displayed.
+		// this might not be the best thing, we e.g. say the room itself plays the song, etc.
 		c.WriteAO("MC", c.Room().Song(), // Song name.
 			strconv.Itoa(room.SpectatorCID), // CID.
 			c.Room().Name(),                 // Showname. We're using the room's name.

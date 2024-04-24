@@ -17,7 +17,7 @@ import (
 )
 
 type SCServer struct {
-	config config.Server
+	config *config.Server
 	rooms  []*room.Room
 
 	uidHeap uid.UIDHeap

@@ -1,24 +1,38 @@
 # The name of the server.
+# Default value: "Unnamed Server".
 name = "Test Server"
 
 # The server's description.
+# Default value: "An unconfigured server."
 description = "The quick brown fox jumps over the lazy dog."
-
-# The maximum allowed amount of players.
-max_players = 100
-
-# The port to use for WebSocket connections (can be both AO or SpriteChat clients).
-ws_port = 8084
-
-# The port to use for raw TCP connections (only used by AO clients).
-legacy_port = 8083
-
-# Whether to allow AO clients to join.
-allow_ao = true
 
 # The username the server will use for server OOC messages.
 server_username = "SCS"
 
+# The maximum allowed amount of players.
+# Default value: 100.
+max_players = 100
+
+# The port to use for WebSocket connections (can be both AO or SpriteChat clients).
+# Default value: 8080.
+ws_port = 8084
+
+# The port to use for raw TCP connections (only used by AO clients).
+# Default value: 8081.
+legacy_port = 8083
+
+# Whether to allow AO clients to join.
+# Default value: true.
+allow_ao = true
+
 # The maximum size for usernames and messages (both IC and OOC).
+# Default value: 100.
 max_msg_size = 100
+# Default value: 20.
 max_name_size = 20
+
+# The log level for the server log. Only messages with a level equal to
+# or higher than selected level will be written to the server log.
+# Available levels: "trace", "debug", "info", "warn", "error", "fatal".
+# Default level: "info".
+log_level = "trace"

@@ -80,7 +80,8 @@ type Room struct {
 	status   Status
 	lock     LockState
 
-	users []*user // TODO: does it need to be pointers?
+	// could be another set...
+	users []*user
 
 	// A list of invited UIDs. Used to decide who can speak when the room spectatable,
 	// or who can enter when it is locked.
@@ -130,21 +131,36 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			music = append(music, MusicCategory(*cat))
 		}
 
+		var logOuts []string
+		for _, mtd := range conf.LogMethods {
+			switch mtd {
+			case "terminal":
+				logOuts = append(logOuts, "stdout")
+			case "file":
+				logOuts = append(logOuts,
+					fmt.Sprintf("log/room/%v.log", strings.ReplaceAll(strings.ToLower(conf.Name), " ", "_")))
+			}
+		}
+
+		lvl := logger.LevelInfo
+		if conf.DebugLog {
+			lvl = logger.LevelDebug
+		}
+
 		rooms = append(rooms, &Room{
-			id:      i,
-			name:    conf.Name,
-			desc:    conf.DefaultDesc,
-			chars:   chars,
-			music:   music,
-			bg:      conf.DefaultBg,
-            song:    packets.SongStop, // the canonical "stop" song for AO
-            ambiance:    packets.SongStop, // the canonical "stop" song for AO
-			status:  StatusIdle,
-			lock:    LockFree,
-			invited: make(map[int]struct{}),
+			id:       i,
+			name:     conf.Name,
+			desc:     conf.DefaultDesc,
+			chars:    chars,
+			music:    music,
+			bg:       conf.DefaultBg,
+			song:     packets.SongStop, // the canonical "stop" song for AO
+			ambiance: packets.SongStop, // the canonical "stop" song for AO
+			status:   StatusIdle,
+			lock:     LockFree,
+			invited:  make(map[int]struct{}),
 			// TODO: log to files
-			logger: logger.NewLoggerOutputs(logger.LevelTrace, roomFormatter(i, conf.Name), "stdout",
-				fmt.Sprintf("log/room/%v.log", strings.ReplaceAll(strings.ToLower(conf.Name), " ", "_"))),
+			logger: logger.NewLoggerOutputs(lvl, roomFormatter(i, conf.Name), logOuts...),
 		})
 	}
 
@@ -350,6 +366,8 @@ func (r *Room) UIDs() []int {
 
 // Returns the number of players in the room.
 func (r *Room) PlayerCount() int {
+	r.mu.Lock()
+	r.mu.Unlock()
 	return len(r.users)
 }
 
@@ -417,7 +435,6 @@ func (r *Room) MusicLen() int {
 	return count
 }
 
-
 // Returns the room's status.
 func (r *Room) Status() string {
 	r.mu.Lock()
@@ -468,12 +485,12 @@ func (r *Room) Invited() []int {
 func (r *Room) IsInvited(uid int) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-    for u := range r.invited {
-        if u == uid {
-            return true
-        }
-    }
-    return false
+	for u := range r.invited {
+		if u == uid {
+			return true
+		}
+	}
+	return false
 }
 
 // Adds the passed UID to the invite list.
