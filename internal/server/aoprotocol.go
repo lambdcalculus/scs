@@ -129,8 +129,8 @@ func (srv *SCServer) handleDone(c *client.Client, contents []string) {
 	c.WriteAO("DONE")
 	logger.Debugf("Client joined with UID %v.", uid)
 
-    c.UpdateBackground()
-    c.UpdateSong()
+	c.UpdateBackground()
+	c.UpdateSong()
 	srv.sendRoomUpdateAllAO(packets.UpdateAll)
 }
 
@@ -146,90 +146,98 @@ func (srv *SCServer) handleChangeChars(c *client.Client, contents []string) {
 
 func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 	if c.MuteState()&client.MutedOOC != 0 {
-        srv.sendServerMessage(c, "You are OOC muted!") 
+		srv.sendServerMessage(c, "You are OOC muted!")
 		return
 	}
-    name := contents[0]
-    msg := contents[1]
+	name := contents[0]
+	msg := contents[1]
 
-    outMsg := strings.TrimSpace(msg)
-    if outMsg == "" {
-        srv.sendServerMessage(c, "Cannot send blank OOC message.") 
+	outMsg := strings.TrimSpace(msg)
+	if outMsg == "" {
+		srv.sendServerMessage(c, "Cannot send blank OOC message.")
 		return
-    }
-    if len(outMsg) > srv.config.MaxMsgSize {
-        srv.sendServerMessage(c, "Your message is too long!") 
+	}
+	if len(outMsg) > srv.config.MaxMsgSize {
+		srv.sendServerMessage(c, "Your message is too long!")
 		return
-    }
+	}
 
-    outName := strings.TrimSpace(name)
-    if outName == "" {
-        srv.sendServerMessage(c, "Set a username to send OOC messages!")
-        return
-    }
-    if len(outName) > srv.config.MaxNameSize {
-        srv.sendServerMessage(c, "Your username is too long!")
-        return
-    }
-    for _, cl := range srv.getClientsInRoom(c.Room()) {
-        if cl.Username() == outName && cl != c {
-           srv.sendServerMessage(c, fmt.Sprintf("Username '%v' is already in use in this room.", name)) 
-           return
-        }
+	outName := strings.TrimSpace(name)
+	if outName == "" {
+		srv.sendServerMessage(c, "Set a username to send OOC messages!")
+		return
+	}
+	if len(outName) > srv.config.MaxNameSize {
+		srv.sendServerMessage(c, "Your username is too long!")
+		return
+	}
+	for cl := range srv.clients.Clients() {
+		if cl.Username() == outName && cl != c {
+			srv.sendServerMessage(c, fmt.Sprintf("Username '%v' is already in use in the server.", name))
+			return
+		}
 
-    }
-    // TODO: commands!!!
+	}
+	// TODO: commands!!!
 
-    srv.sendOOCMessageToRoom(c.Room(), outName, outMsg, false)
+	c.SetUsername(outName)
+	srv.sendOOCMessageToRoom(c.Room(), outName, outMsg, false)
+	c.Room().LogEvent(room.EventOOC, "%v (CID: %v, UID: %v): %v", outName, c.CID(), c.UID(), outMsg)
 }
 
 func (srv *SCServer) handleMusicArea(c *client.Client, contents []string) {
-    // Areas/rooms were originally a hack built on top of songs in AO.
-    // For this reason, the music packet is used for both areas and music to this day.
-    for _, r := range c.Room().VisibleNames() {
-        if r == contents[0] {
-            srv.handleArea(c, contents)
-            return
-        }
-    }
-    for _, s := range c.Room().MusicList() {
-        if s == contents[0] {
-            srv.handleMusic(c, contents)
-            return
-        }
-    }
+	// Areas/rooms were originally a hack built on top of songs in AO.
+	// For this reason, the music packet is used for both areas and music to this day.
+	for _, r := range c.Room().VisibleNames() {
+		if r == contents[0] {
+			srv.handleArea(c, contents)
+			return
+		}
+	}
+	for _, s := range c.Room().MusicList() {
+		if s == contents[0] {
+			srv.handleMusic(c, contents)
+			return
+		}
+	}
 }
 
 func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
-    if c.MuteState()&client.MutedMusic != 0 {
-        srv.sendServerMessage(c, "You are muted from playing music.")
-        return
-    } 
-    if (c.Room().LockState() == room.LockSpec) && !c.Room().IsInvited(c.UID()) {
-        srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
-        return
-    }
-    
-    song := contents[0]
-    if !strings.Contains(song, ".") { // song name is a category, therefore stop
-        song = packets.SongStop
-    }
+	if c.MuteState()&client.MutedMusic != 0 {
+		srv.sendServerMessage(c, "You are muted from playing music.")
+		return
+	}
+	if (c.Room().LockState() == room.LockSpec) && !c.Room().IsInvited(c.UID()) {
+		srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
+		return
+	}
 
-    var showname string
-    if len(contents) >= 3 {
-        showname = strings.TrimSpace(contents[2])
-        c.SetShowname(showname)
-    }
-    if showname == "" {
-        showname = c.Room().GetNameByCID(c.CID())
-    }
+	song := contents[0]
+	if !strings.Contains(song, ".") { // song name is a category, therefore stop
+		song = packets.SongStop
+	}
 
-    effects := "0"
-    if len(contents) >= 4 {
-        effects = contents[3]
+	var showname string
+	if len(contents) >= 3 {
+		showname = strings.TrimSpace(contents[2])
+		c.SetShowname(showname)
+	}
+	if showname == "" {
+		showname = c.Room().GetNameByCID(c.CID())
+	}
+
+	effects := "0"
+	if len(contents) >= 4 {
+		effects = contents[3]
+	}
+	c.Room().SetSong(song)
+	srv.writeToRoomAO(c.Room(), "MC", song, contents[1], showname, "1", "0", effects)
+	if song == packets.SongStop {
+		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) stopped the music.", showname, c.CID(), c.UID())
+	} else {
+		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) played %v.", showname, c.CID(), c.UID(), song)
     }
-    c.Room().SetSong(song)
-    srv.writeToRoomAO(c.Room(), "MC", song, contents[1], showname, "1", "0", effects)
+    return
 }
 
 func (srv *SCServer) handleArea(c *client.Client, contents []string) {

@@ -105,51 +105,51 @@ func (srv *SCServer) getRoomByName(name string) *room.Room {
 
 // Returns the clients that are in the specified room.
 func (srv *SCServer) getClientsInRoom(room *room.Room) []*client.Client {
-    list := make([]*client.Client, 0, room.PlayerCount())
-    for c := range srv.clients.Clients() {
-        if c.Room() == room {
-            list = append(list, c)
-        }
-    }
+	list := make([]*client.Client, 0, room.PlayerCount())
+	for c := range srv.clients.Clients() {
+		if c.Room() == room {
+			list = append(list, c)
+		}
+	}
 	return list
 }
 
 // Writes the specified packet to the specified room.
 func (srv *SCServer) writeToRoomAO(r *room.Room, header string, contents ...string) {
-    clients := srv.getClientsInRoom(r)
-    for _, c := range clients {
-        if c.Type() == client.AOClient {
-            c.WriteAO(header, contents...)
-        }
-    }
+	clients := srv.getClientsInRoom(r)
+	for _, c := range clients {
+		if c.Type() == client.AOClient {
+			c.WriteAO(header, contents...)
+		}
+	}
 }
 
 // Sends an OOC message to all clients in the specified room.
 func (srv *SCServer) sendOOCMessageToRoom(r *room.Room, username string, msg string, server bool) {
-    clients := srv.getClientsInRoom(r)
-    for _, c := range clients {
-        c.SendOOCMessage(username, msg, server)
-    }
+	clients := srv.getClientsInRoom(r)
+	for _, c := range clients {
+		c.SendOOCMessage(username, msg, server)
+	}
 }
 
 // Sends a server message to all clients in the specified room.
 func (srv *SCServer) sendServerMessageToRoom(r *room.Room, msg string) {
-    clients := srv.getClientsInRoom(r)
-    for _, c := range clients {
-        c.SendOOCMessage(srv.config.Username, msg, true)
-    }
+	clients := srv.getClientsInRoom(r)
+	for _, c := range clients {
+		c.SendOOCMessage(srv.config.Username, msg, true)
+	}
 }
 
 // Disconnects and cleans up a client.
 func (srv *SCServer) removeClient(c *client.Client) {
 	if c.Room() != nil {
 		c.Room().Leave(c.UID())
-        c.SetRoom(nil)
+		c.SetRoom(nil)
 	}
 	if c.UID() != 0 {
 		srv.uidHeap.Free(c.UID())
 		srv.logger.Infof("Client with UID %v (IPID: %v) left.", c.UID(), c.IPID())
-        c.SetUID(uid.Unjoined)
+		c.SetUID(uid.Unjoined)
 	}
 	c.Disconnect()
 	srv.clients.Remove(c)
@@ -192,10 +192,10 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 		srv.sendServerMessage(c, "You are already in this room!")
 		return
 	}
-    if (dst.LockState() & room.LockLocked != 0) && !dst.IsInvited(c.UID()) {
+	if (dst.LockState()&room.LockLocked != 0) && !dst.IsInvited(c.UID()) {
 		srv.sendServerMessage(c, "You are not invited to this room!")
-        return
-    }
+		return
+	}
 
 	srv.sendServerMessage(c, fmt.Sprintf("Moved to %v.", dst.Name()))
 	srv.sendServerMessage(c, fmt.Sprintf("Description: %v", dst.Desc()))
@@ -212,11 +212,11 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 	currRoom.Leave(c.UID())
 
 	c.SetRoom(dst)
-    c.Update()
-    c.ChangeChar(newCID)
-    if c.Type() == client.AOClient {
-        c.SendRoomUpdateAO(packets.UpdateAll & ^packets.UpdatePlayer)
-    }
+	c.Update()
+	c.ChangeChar(newCID)
+	if c.Type() == client.AOClient {
+		c.SendRoomUpdateAO(packets.UpdateAll & ^packets.UpdatePlayer)
+	}
 	// TODO: send only to adjacent rooms?
 	srv.sendRoomUpdateAllAO(packets.UpdatePlayer)
 	// TODO: enter/leave OOC message

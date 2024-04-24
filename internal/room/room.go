@@ -103,6 +103,35 @@ type user struct {
 	userID int
 }
 
+// Represents types of occurrences in the Room. They are used for logging.
+type Event int
+
+const (
+	EventConfig Event = iota
+	EventEnter
+	EventExit
+	EventCharacter
+	EventMusic
+	EventOOC
+	EventIC
+	EventJudge
+	EventDebug
+	EventFail
+)
+
+var eventToString = map[Event]string{
+	EventConfig:    "CONF ",
+	EventEnter:     "ENTER",
+	EventExit:      "EXIT ",
+	EventCharacter: "CHAR ",
+	EventMusic:     "MUSIC",
+	EventOOC:       "OOC  ",
+	EventIC:        "IC   ",
+	EventJudge:     "JUD  ",
+	EventDebug:     "DEBUG",
+	EventFail:      "FAIL ",
+}
+
 // MakeRooms creates a list of rooms according to the room configuration.
 func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, error) {
 	// TODO: warn about non-existant lists/adjancecies?
@@ -170,11 +199,21 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 		adjNames := conf.AdjacentRooms
 		adjRooms := findRooms(rooms, adjNames)
 		rooms[i].adjacent = adjRooms
-		rooms[i].logger.Debugf("Loaded configuration: %#v.", conf)
-		rooms[i].logger.Debugf("Current settings: %#v", rooms[i])
+		rooms[i].LogEventDebug(EventConfig, "Loaded configuration: %#v.", conf)
+		rooms[i].LogEventDebug(EventConfig, "Current settings: %#v", rooms[i])
 	}
 
 	return rooms, nil
+}
+
+// Logs an event occurring in the room.
+func (r *Room) LogEvent(event Event, format string, a ...any) {
+	r.logger.Infof(" %v %v", eventToString[event], fmt.Sprintf(format, a...))
+}
+
+// Logs an event occurring in the room at debug level.
+func (r *Room) LogEventDebug(event Event, format string, a ...any) {
+	r.logger.Debugf(" %v %v", eventToString[event], fmt.Sprintf(format, a...))
 }
 
 // Attempts to enter a new user into the room. If unable, returns `false`.
@@ -183,30 +222,31 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 // This doesn't check for locks or anything like that, that needs to be done externally.
 func (r *Room) Enter(cid int, uid int) (ok bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-
 	if cid == SpectatorCID {
 		goto enter
 	}
 	if cid >= len(r.chars) || cid < 0 {
-		r.logger.Debugf("UID %v tried joining with illegal CID (%v).", uid, cid)
+		r.LogEventDebug(EventFail, "UID %v tried joining with illegal CID (%v).", uid, cid)
+		r.mu.Unlock()
 		return false
 	} else if r.chars[cid].taken {
-		r.logger.Debugf("UID %v tried joining as CID %v, but this character is taken.", uid, cid)
+		r.mu.Unlock() // Unlock so we can use GetNameByCID
+		r.LogEventDebug(EventFail, "UID %v tried joining as %v (CID: %v), but this character is taken.",
+			uid, r.GetNameByCID(cid), cid)
 		return false
 	}
 	r.chars[cid].taken = true
 
 enter:
-	r.users = append(r.users, &user{cid, uid})
-	r.logger.Debugf("UID %v entered as CID %v.", uid, cid)
+	r.users = append(r.users, &user{charID: cid, userID: uid})
+	r.mu.Unlock()
+	r.LogEvent(EventEnter, "%v (CID: %v, UID: %v) entered.", r.GetNameByCID(cid), cid, uid)
 	return true
 }
 
 // Removes a user from the room.
 func (r *Room) Leave(uid int) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	u := r.getUser(uid)
 	if u.userID == invalidUID {
@@ -216,8 +256,11 @@ func (r *Room) Leave(uid int) {
 		// shouldn't need an out-of-bounds check
 		r.chars[u.charID].taken = false
 	}
+	r.mu.Unlock() // Unlock so we can get char name.
+	r.LogEvent(EventExit, "%v (CID: %v, UID: %v) left.", r.GetNameByCID(u.charID), u.charID, u.userID)
+	r.mu.Lock()
 	r.removeUser(u.userID)
-	r.logger.Debugf("UID %v left, was CID %v.", u.userID, u.charID)
+	r.mu.Unlock()
 }
 
 // Gets a character's name in the room's list by CID. If the CID is out of bounds,
@@ -252,21 +295,28 @@ func (r *Room) GetCIDByName(name string) (cid int, ok bool) {
 
 // Attempts a char change.
 func (r *Room) ChangeChar(uid int, to int) (ok bool) {
+	r.mu.Lock()
+
 	usr := r.getUser(uid)
 	from := usr.charID
-    if from == to {
-        return true
-    }
+	if from == to {
+		r.mu.Unlock()
+		return true
+	}
 
 	if to == SpectatorCID {
 		goto change
 	}
 
 	if to < 0 || to >= len(r.chars) {
-		r.logger.Debugf("UID %v (CID: %v) tried changing to illegal CID (%v).", uid, from, to)
+		r.mu.Unlock()
+		r.LogEventDebug(EventFail, "%v (CID: %v, UID: %v) tried changing to illegal CID (%v).",
+			r.GetNameByCID(from), from, uid, to)
 		return false
 	} else if r.chars[to].taken {
-		r.logger.Debugf("UID %v (CID: %v) tried changing to taken CID (%v).", uid, from, to)
+		r.mu.Unlock()
+		r.LogEventDebug(EventFail, "%v (CID: %v, UID: %v) tried changing to %v (CID %v), but this character is taken.",
+			r.GetNameByCID(from), from, uid, r.GetNameByCID(to), to)
 		return false
 	}
 	r.chars[to].taken = true
@@ -276,7 +326,9 @@ change:
 	if from != SpectatorCID {
 		r.chars[from].taken = false
 	}
-	r.logger.Debugf("UID %v changed to CID %v (was CID %v).", uid, to, from)
+	r.mu.Unlock()
+	r.LogEvent(EventCharacter, "%v (CID: %v, UID: %v) changed to %v (CID: %v).",
+		r.GetNameByCID(from), from, uid, r.GetNameByCID(to), to)
 	return true
 }
 
@@ -357,6 +409,8 @@ func (r *Room) VisibleNames() []string {
 
 // Returns all the UIDs in the room.
 func (r *Room) UIDs() []int {
+	r.mu.Lock()
+	r.mu.Unlock()
 	uids := make([]int, len(r.users))
 	for i, u := range r.users {
 		uids[i] = u.userID
