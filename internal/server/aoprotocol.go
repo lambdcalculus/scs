@@ -31,8 +31,8 @@ var handlerMapAO = map[string]handlerAO{
 	"CT":      {(*SCServer).handleOOC, 2, 2, true},
 	"MC":      {(*SCServer).handleMusicArea, 2, 4, true},
 	"CH":      {(*SCServer).handleCheck, 1, 1, true},
+	"MS":      {(*SCServer).handleIC, 15, 26, true},
 	// TODO:
-	// MS (IC message)
 	// HP (judge bars)
 	// RT (wt/ce and testimony)
 	// AUTH (authentication)
@@ -70,11 +70,11 @@ func (srv *SCServer) handleHI(c *client.Client, contents []string) {
 	c.WriteAO("PN", strconv.Itoa(srv.clients.SizeJoined()), strconv.Itoa(srv.config.MaxPlayers))
 
 	c.WriteAO("FL",
-		/* "yellowtext", "flipping", "customobjections", "fastloading",*/ "noencryption", // 2.1.0 features
-		// "deskmod", "evidence",                                                       // 2.3 - 2.5 features
+		"yellowtext", "flipping", "customobjections", "fastloading", "noencryption", // 2.1.0 features
+		"deskmod", // "evidence",                                                       // 2.3 - 2.5 features
 		"cccc_ic_support", "arup", //"casing_alerts", "modcall_reason",                // 2.6 features
-		// "looping_sfx", "additive", "effects",                                        // 2.8 features
-		// "y_offset", "expanded_desk_mods",                                            // 2.9 features
+		"looping_sfx", "additive", "effects",                                        // 2.8 features
+		"y_offset", "expanded_desk_mods",                                            // 2.9 features
 		// "auth_packet",                                                               // 2.9.1 feature
 	)
 
@@ -142,6 +142,124 @@ func (srv *SCServer) handleChangeChars(c *client.Client, contents []string) {
 	c.ChangeChar(cid)
 	// TODO: SpriteChat version
 	srv.writeToRoomAO(c.Room(), "CharsCheck", c.Room().TakenList()...)
+}
+
+func (srv *SCServer) handleIC(c *client.Client, contents []string) {
+    // Welcome to He11. It is time to validate an IC message.
+    if (c.CID() == room.SpectatorCID) {
+        srv.sendServerMessage(c, "Spectators cannot speak.")
+        return
+    }
+    if (c.MuteState() & client.MutedIC != 0) {
+        srv.sendServerMessage(c, "You are IC muted!")
+        return
+    }
+    if (c.Room().LockState() == room.LockSpec && !c.Room().IsInvited(c.UID())) {
+        srv.sendServerMessage(c, "This room is in spectatable mode and you are not on the invite list.")
+        return
+    }
+
+    // The client IC packet can have between 15 and 26 arguments. The server has 30, due to extra information
+    // for pairing. The first 16 arguments align exactly between both (if they exist).
+    resp := make([]string, 30) 
+    copy(resp[:17], contents)
+    // TODO: pairing support.
+    resp[16] = "-1" // (other_charid) no pairing
+    resp[17] = ""   // (other_name)   no pairing showname
+    resp[18] = "0"  // (other_emote)  no pairing emote
+    resp[20] = "0"  // (other_offset) no pairing offset
+    resp[21] = "0"  // (other_flip)   no pairing flip
+    // Now, the rest of the arguments are a bit cursed because of the misalignment.
+    if (len(contents) >= 19) {
+        // TODO: check version for offset.
+        resp[19] = contents[17] // (self_offset)
+        copy(resp[22:], contents[18:])
+    }
+
+    // TODO: actually check for the packet's validity.
+
+    // deskmod
+    if resp[0] ==  "chat" {
+        // This has been deprecated on newer clients, but we replace it anyhow.
+        resp[0] = "1"
+    }
+
+    // char name (i.e. the actual file) (resp[2])
+    // TODO: add an iniswap check.
+
+    // emote (resp[3])
+    // TODO: narrator mode.
+
+    // message
+    resp[4] = strings.TrimSpace(resp[4])
+    if len(resp[4]) > srv.config.MaxMsgSize {
+		srv.sendServerMessage(c, "Your message is too long!")
+		return
+    }
+    // TODO: blankpost check.
+    // TODO: doublepost check.
+
+    // pos/side resp[5]
+    // TODO: side check.
+
+    // emote mod
+    if resp[7] == "4" { // for some reason, this can crash the client.
+        resp[7] = "6"
+    }
+
+    // char id
+    if resp[8] != strconv.Itoa(c.CID()) {
+        // incorrect CID
+        return
+    }
+
+    // shout modifier resp[10]
+    // TODO: check custom shout.
+    // TODO: check if room allows shouting.
+
+    // evidence
+    // TODO: deal with evidence.
+    resp[11] = "0" // 0 is the index for no evidence
+
+    // 2.6+ extensions, from here on
+    // showname
+    resp[15] = strings.TrimSpace(resp[15])
+    if (len(resp[15]) > srv.config.MaxNameSize) {
+        srv.sendServerMessage(c, "Your showname is too long!")
+        return
+    }
+    c.SetShowname(resp[15])
+    // TODO: setting for forbidding shownames in rooms?
+    // TODO: allow "blank" showname?
+
+    // non-interrupting preanim ("immediate")
+    if resp[22] == "" {
+        resp[22] = "0"
+    }
+    // TODO: akashi and athena do some more funny checking here, maybe i should too
+    
+    // 2.8+ extensions, from here on
+    // sfx looping
+    if resp[23] == "" {
+        resp[23] = "0"
+    }
+    // screenshake
+    if resp[24] == "" {
+        resp[24] = "0"
+    }
+    // additive
+    // TODO: add check for last speaker
+    // TODO: study some of the checks akashi does
+    if resp[28] == "" { 
+        resp[28] = "0"
+    } else if resp[28] == "1" {
+        var b strings.Builder
+        b.WriteString(" ")
+        b.WriteString(resp[4])
+        resp[4] = b.String()
+    }
+
+    srv.writeToRoomAO(c.Room(), "MS", resp...)
 }
 
 func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
@@ -236,8 +354,8 @@ func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
 		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) stopped the music.", showname, c.CID(), c.UID())
 	} else {
 		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) played %v.", showname, c.CID(), c.UID(), song)
-    }
-    return
+	}
+	return
 }
 
 func (srv *SCServer) handleArea(c *client.Client, contents []string) {
