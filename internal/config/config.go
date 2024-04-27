@@ -36,7 +36,7 @@ func ServerDefault() *Server {
 		PortWS:      8080,
 		PortTCP:     8081,
 		AssetURL:    "",
-		MaxMsgSize:  100,
+		MaxMsgSize:  150,
 		MaxNameSize: 20,
 		LevelString: "info",
 	}
