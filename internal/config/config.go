@@ -54,12 +54,19 @@ var StringToLevel = map[string]logger.LogLevel{
 type Room struct {
 	Name            string `toml:"name"`
 	DefaultBg       string `toml:"background"`
+	LockBg          bool   `toml:"lock_background"`
 	DefaultDesc     string `toml:"description"`
 	DefaultAmbiance string `toml:"ambiance"`
 
 	AdjacentRooms  []string `toml:"adjacent_rooms"`
 	CharLists      []string `toml:"character_lists"`
 	SongCategories []string `toml:"song_categories"`
+	Sides          []string `toml:"side_list"`
+
+	AllowBlankpost bool `toml:"allow_blankpost"`
+	AllowShouting  bool `toml:"allow_shouting"`
+	AllowIniswap   bool `toml:"allow_iniswap"`
+	ForceImmediate bool `toml:"force_immediate"`
 
 	// TODO: add buffered logging
 	LogMethods []string `toml:"log_methods"`
@@ -71,8 +78,13 @@ func RoomDefault() *Room {
 		Name:           "Unknown",
 		CharLists:      []string{"all"},
 		SongCategories: []string{"all"},
+		Sides:          []string{"wit", "def", "pro", "jud", "hld", "hlp"},
 		AdjacentRooms:  []string{},
 		LogMethods:     []string{"file"},
+		AllowBlankpost: true,
+		AllowShouting:  true,
+		AllowIniswap:   true,
+		ForceImmediate: false,
 	}
 }
 

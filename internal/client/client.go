@@ -329,8 +329,17 @@ func (c *Client) UpdateRoomList() {
 func (c *Client) UpdateBackground() {
 	switch c.Type() {
 	case AOClient:
-		// TODO: position?
 		c.WriteAO("BN", c.Room().Background())
+	case SCClient:
+		// TODO
+	}
+}
+
+// Updates the side list in the client's dropdown.
+func (c *Client) UpdateSides() {
+	switch c.Type() {
+	case AOClient:
+		c.WriteAO("SD", strings.Join(c.Room().Sides(), "*"))
 	case SCClient:
 		// TODO
 	}
@@ -376,6 +385,7 @@ func (c *Client) Update() {
 	c.UpdateMusicList()
 	c.UpdateCharList()
 	c.UpdateBackground()
+	c.UpdateSides()
 	c.UpdateSong()
 	c.UpdateAmbiance()
 }
@@ -480,6 +490,18 @@ func (c *Client) SetUsername(name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.username = name
+}
+
+func (c *Client) Side() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.side
+}
+
+func (c *Client) SetSide(side string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.side = side
 }
 
 func (c *Client) MuteState() MuteState {

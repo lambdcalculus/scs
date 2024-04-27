@@ -130,7 +130,9 @@ func (srv *SCServer) handleDone(c *client.Client, contents []string) {
 	logger.Debugf("Client joined with UID %v.", uid)
 
 	c.UpdateBackground()
+	c.UpdateSides()
 	c.UpdateSong()
+	c.UpdateAmbiance()
 	srv.sendRoomUpdateAllAO(packets.UpdateAll)
 }
 

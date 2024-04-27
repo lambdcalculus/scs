@@ -10,6 +10,10 @@ name = "Lobby"
 # Default value: "".
 background = "RV - Center Lobby"
 
+# Whether to lock the background to the default (TODO: CMs may change it?).
+# Default: false.
+lock_background = true
+
 # The description of the room.
 # Default value: "".
 description = "The lobby."
@@ -24,6 +28,13 @@ character_lists = ["all"]
 # Default value: ["all"].
 song_categories = ["all"]
 
+# Which sides (or pos/positions) the client can pick in this room.
+# Depending on the background, this can enjoy more than the default positions,
+# as, if "pos" is in the list and not one of the defaults, the client will look for
+# the images "pos" and "pos_overlay" for the background.
+# Default: ["wit", "def", "pro", "jud", "hld", "hlp"]
+side_list = ["wit", "def", "pro", "jud", "hld", "hlp"]
+
 # Which rooms are adjacent to this one, i.e., that can be seen and accessed from this one.
 # If "all" is in the list, then all rooms will considered adjacent.
 #
@@ -32,6 +43,23 @@ song_categories = ["all"]
 # be accessible from Room B. Both need to have each other in their lists for the symmetry.
 # Default value: [].
 adjacent_rooms = ["Lounge", "Hub"]
+
+# Whether to allow blankposting in this room.
+# Default: true.
+allow_blankpost = true
+
+# Whether to allow shouting in this room.
+# Default: true.
+allow_shouting = true
+
+# Whether to allow iniswapping in this room.
+# Default: true.
+allow_iniswapping = true
+
+# Whether to force preanims to play immediately (i.e. preanims don't interrupt, and play at
+# the same time as the message).
+# Default: false.
+force_immediate = false
 
 # The methods which will be used for logging this room's events.
 # Available methods are:
