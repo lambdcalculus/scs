@@ -71,10 +71,10 @@ func (srv *SCServer) handleHI(c *client.Client, contents []string) {
 
 	c.WriteAO("FL",
 		"yellowtext", "flipping", "customobjections", "fastloading", "noencryption", // 2.1.0 features
-		"deskmod", // "evidence",                                                       // 2.3 - 2.5 features
+		"deskmod",                 // "evidence",                                                       // 2.3 - 2.5 features
 		"cccc_ic_support", "arup", //"casing_alerts", "modcall_reason",                // 2.6 features
-		"looping_sfx", "additive", "effects",                                        // 2.8 features
-		"y_offset", "expanded_desk_mods",                                            // 2.9 features
+		"looping_sfx", "additive", "effects", // 2.8 features
+		"y_offset", "expanded_desk_mods", // 2.9 features
 		// "auth_packet",                                                               // 2.9.1 feature
 	)
 
@@ -147,121 +147,244 @@ func (srv *SCServer) handleChangeChars(c *client.Client, contents []string) {
 }
 
 func (srv *SCServer) handleIC(c *client.Client, contents []string) {
-    // Welcome to He11. It is time to validate an IC message.
-    if (c.CID() == room.SpectatorCID) {
-        srv.sendServerMessage(c, "Spectators cannot speak.")
-        return
-    }
-    if (c.MuteState() & client.MutedIC != 0) {
-        srv.sendServerMessage(c, "You are IC muted!")
-        return
-    }
-    if (c.Room().LockState() == room.LockSpec && !c.Room().IsInvited(c.UID())) {
-        srv.sendServerMessage(c, "This room is in spectatable mode and you are not on the invite list.")
-        return
-    }
+	// Welcome to He11. It is time to validate an IC message.
+	if c.CID() == room.SpectatorCID {
+		srv.sendServerMessage(c, "Spectators cannot speak.")
+		return
+	}
+	if c.MuteState()&client.MutedIC != 0 {
+		srv.sendServerMessage(c, "You are IC muted!")
+		return
+	}
+	if c.Room().LockState() == room.LockSpec && !c.Room().IsInvited(c.UID()) {
+		srv.sendServerMessage(c, "This room is in spectatable mode and you are not on the invite list.")
+		return
+	}
 
-    // The client IC packet can have between 15 and 26 arguments. The server has 30, due to extra information
-    // for pairing. The first 16 arguments align exactly between both (if they exist).
-    resp := make([]string, 30) 
-    copy(resp[:17], contents)
-    // TODO: pairing support.
-    resp[16] = "-1" // (other_charid) no pairing
-    resp[17] = ""   // (other_name)   no pairing showname
-    resp[18] = "0"  // (other_emote)  no pairing emote
-    resp[20] = "0"  // (other_offset) no pairing offset
-    resp[21] = "0"  // (other_flip)   no pairing flip
-    // Now, the rest of the arguments are a bit cursed because of the misalignment.
-    if (len(contents) >= 19) {
-        // TODO: check version for offset.
-        resp[19] = contents[17] // (self_offset)
-        copy(resp[22:], contents[18:])
-    }
+	// The client IC packet can have between 15 and 26 arguments. The server has 30, due to extra information
+	// for pairing. The first 17 arguments align exactly between both (if they exist).
+	resp := make([]string, 30)
+	copy(resp[:17], contents)
+	// Args 16, 17, 18, 20, 21 are pair-related.
+	// Now, the rest of the arguments are a bit cursed because of the misalignment.
+	if len(contents) >= 19 {
+		// older clients don't support two-dimensional offsets
+		// but fuck them
+		resp[19] = contents[17] // (self_offset)
+		copy(resp[22:], contents[18:])
+	}
 
-    // TODO: actually check for the packet's validity.
+    /* BEGINNING OF VALIDATION */
+	// deskmod
+	if resp[0] == "chat" {
+		// This has been deprecated on newer clients, but we replace it anyhow.
+		resp[0] = "1"
+	}
+	if mod, err := strconv.Atoi(resp[0]); err != nil || mod < 0 || mod > 5 {
+		return
+	}
 
-    // deskmod
-    if resp[0] ==  "chat" {
-        // This has been deprecated on newer clients, but we replace it anyhow.
-        resp[0] = "1"
-    }
+	// char name (i.e. the actual file)
+	iniswapping := (c.Room().GetNameByCID(c.CID()) != resp[2])
+	if !c.Room().AllowIniswapping() && iniswapping {
+		srv.sendServerMessage(c, "Iniswapping is not allowed in this room!")
+		return
+	}
 
-    // char name (i.e. the actual file) (resp[2])
-    // TODO: add an iniswap check.
+	// emote (resp[3])
+	// TODO: narrator/first-person mode.
 
-    // emote (resp[3])
-    // TODO: narrator mode.
-
-    // message
-    resp[4] = strings.TrimSpace(resp[4])
-    if len(resp[4]) > srv.config.MaxMsgSize {
+	// message
+	resp[4] = strings.TrimSpace(resp[4])
+	if len(resp[4]) > srv.config.MaxMsgSize {
 		srv.sendServerMessage(c, "Your message is too long!")
 		return
-    }
-    // TODO: blankpost check.
-    // TODO: doublepost check.
+	}
+	if !c.Room().AllowBlankpost() && resp[4] == "" {
+		srv.sendServerMessage(c, "Blankposting is not allowed in this room!")
+		return
+	}
+	if c.Room().LastSpeaker() == c.CID() && c.LastMsg() == resp[4] && c.LastMsg() != "" {
+		srv.sendServerMessage(c, "You just sent that message! Watch out for lag.")
+		return
+	}
 
-    // pos/side resp[5]
-    // TODO: side check.
+	// pos/side
+	valid := false
+	for _, side := range c.Room().Sides() {
+		if resp[5] == side {
+			valid = true
+		}
+	}
+	if !valid {
+		if len(c.Room().Sides()) > 0 {
+			resp[5] = c.Room().Sides()[0]
+		} else {
+			resp[5] = "wit"
+		}
+	}
 
-    // emote mod
-    if resp[7] == "4" { // for some reason, this can crash the client.
-        resp[7] = "6"
-    }
+	// sfx (resp[6])
+	// does not require checking
 
-    // char id
-    if resp[8] != strconv.Itoa(c.CID()) {
-        // incorrect CID
-        return
-    }
+	// emote mod
+	if resp[7] == "4" { // for some reason, this can crash the client.
+		resp[7] = "6"
+	}
+	if mod, err := strconv.Atoi(resp[7]); err != nil || mod < 0 || mod > 6 {
+		return
+	}
 
-    // shout modifier resp[10]
-    // TODO: check custom shout.
-    // TODO: check if room allows shouting.
+	// char id
+	if resp[8] != strconv.Itoa(c.CID()) {
+		// incorrect CID
+		return
+	}
 
-    // evidence
-    // TODO: deal with evidence.
-    resp[11] = "0" // 0 is the index for no evidence
+	// shout modifier
+	// old clients dont support the '4&custom' modifier
+	// but fuck them
+	if !c.Room().AllowShouting() && resp[10] != "0" {
+		srv.sendServerMessage(c, "Shhh! Shouting is not allowed in this room!")
+		return
+	}
+	if mod, err := strconv.Atoi(strings.Split(resp[10], "&")[0]); err != nil || mod < 0 || mod > 4 {
+		return
+	}
 
-    // 2.6+ extensions, from here on
-    // showname
-    resp[15] = strings.TrimSpace(resp[15])
-    if (len(resp[15]) > srv.config.MaxNameSize) {
-        srv.sendServerMessage(c, "Your showname is too long!")
-        return
-    }
-    c.SetShowname(resp[15])
-    // TODO: setting for forbidding shownames in rooms?
-    // TODO: allow "blank" showname?
+	// evidence
+	// TODO: deal with evidence.
+	resp[11] = "0" // 0 is the index for no evidence
 
-    // non-interrupting preanim ("immediate")
-    if resp[22] == "" {
-        resp[22] = "0"
-    }
-    // TODO: akashi and athena do some more funny checking here, maybe i should too
+	// flipping
+	if _, err := strconv.ParseBool(resp[12]); err != nil {
+		return
+	}
+
+	// realization
+	if _, err := strconv.ParseBool(resp[13]); err != nil {
+		return
+	}
+
+	// text color
+	if c, err := strconv.Atoi(resp[14]); err != nil || c < 0 || c > 11 {
+		return
+	}
+
+	// 2.6+ extensions, from here on
+	// showname
+	resp[15] = strings.TrimSpace(resp[15])
+	if len(resp[15]) > srv.config.MaxNameSize {
+		srv.sendServerMessage(c, "Your showname is too long!")
+		return
+	}
+
+    // pairing
+    // we only validate it here, we check for the actual pairing at the end
+	otherCID, err := strconv.Atoi(strings.Split(resp[16], "^")[0])
+	if err != nil {
+		return
+	}
+	// non-interrupting preanim ("immediate")
+	if resp[22] == "" {
+		resp[22] = "0"
+	} else if b, err := strconv.ParseBool(resp[22]); err != nil {
+		return
+	} else if b || c.Room().ForceImmediate() {
+		resp[22] = "1" // in case we got here due to room forcing immediate
+		// check emote mod
+		if resp[7] == "1" || resp[7] == "2" {
+			resp[7] = "0"
+		} else if resp[7] == "6" {
+			resp[7] = "5"
+		}
+	}
+
+	// 2.8+ extensions, from here on
+	// sfx looping
+	if resp[23] == "" {
+		resp[23] = "0"
+	} else if _, err := strconv.ParseBool(resp[23]); err != nil {
+		return
+	}
+
+	// screenshake
+	if resp[24] == "" {
+		resp[24] = "0"
+	} else if _, err := strconv.ParseBool(resp[24]); err != nil {
+		return
+	}
+
+	// NOTE: frames arguments (25-27) do not require checking
+
+	// additive
+	// TODO: add check for last speaker
+	// TODO: study some of the checks akashi does
+	if resp[28] == "1" && c.Room().LastSpeaker() == c.CID() {
+		var b strings.Builder
+		b.WriteString(" ")
+		b.WriteString(resp[4])
+		resp[4] = b.String()
+	} else {
+		resp[28] = "0"
+	}
+
+    // effects (resp[29])
+	// does not require checking
+    /* END OF VALIDATION */
+
+	c.SetLastMsg(resp[4])
+	c.SetSide(resp[5])
+	c.SetShowname(resp[15])
+	pd := client.PairData{
+		PairWanted: otherCID,
+		LastChar:   resp[2],
+		LastEmote:  resp[3],
+		LastFlip:   resp[12],
+		LastOffset: resp[19],
+	}
+	c.SetPairData(pd)
     
-    // 2.8+ extensions, from here on
-    // sfx looping
-    if resp[23] == "" {
-        resp[23] = "0"
-    }
-    // screenshake
-    if resp[24] == "" {
-        resp[24] = "0"
-    }
-    // additive
-    // TODO: add check for last speaker
-    // TODO: study some of the checks akashi does
-    if resp[28] == "" { 
-        resp[28] = "0"
-    } else if resp[28] == "1" {
-        var b strings.Builder
-        b.WriteString(" ")
-        b.WriteString(resp[4])
-        resp[4] = b.String()
-    }
+    // check for pairing
+	if otherCID != -1 {
+		var other *client.Client
+		for _, cl := range srv.getClientsInRoom(c.Room()) {
+			if cl.CID() == otherCID {
+				other = cl
+			}
+		}
+		if other == nil {
+			goto nopair
+		}
+		pd := other.PairData()
+		if pd.PairWanted == c.CID() && c.Side() == other.Side() {
+			// resp[16] (other_charid) is already set correctly
+			resp[17] = pd.LastChar
+			resp[18] = pd.LastEmote
+			resp[20] = pd.LastOffset
+			resp[21] = pd.LastFlip
+            goto paired
+		} else if pd.PairWanted != c.CID() {
+            var username string
+            if c.Username() != "" {
+                username = " (" + c.Username() + ")"
+            }
+            srv.sendServerMessage(other, fmt.Sprintf("%v%v wants to pair with you!", c.Room().GetNameByCID(c.CID()), username))
+        } else if c.Side() != other.Side() {
+            srv.sendServerMessage(other, "You're not in the same position as your pairing partner!")
+            srv.sendServerMessage(c, "You're not in the same position as your pairing partner!")
+        }
+	}
+nopair:
+	resp[16] = "-1^" // other_charid (and front/back)
+	resp[17] = ""    // other_name
+	resp[18] = "0"   // other_emote
+	resp[20] = "0"   // other_offset
+	resp[21] = "0"   // other_flip
+paired:
 
-    srv.writeToRoomAO(c.Room(), "MS", resp...)
+	c.Room().SetLastSpeaker(c.CID())
+	srv.writeToRoomAO(c.Room(), "MS", resp...)
 }
 
 func (srv *SCServer) handleOOC(c *client.Client, contents []string) {

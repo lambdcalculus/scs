@@ -43,24 +43,41 @@ const (
 type Client struct {
 	mu sync.Mutex
 
+	// connection data
 	wsConn     *websocket.Conn
 	tcpConn    net.Conn
 	tcpScanner *bufio.Scanner
 	addr       string
 	clientType ClientType
 
+	// identification data
 	ident string
 	ipid  string
 	uid   int
 	cid   int
 
+	// state data
 	showname string
 	username string // OOC name
 	room     *room.Room
+	side     string
 	mute     MuteState
 	autopass bool // TODO: implement
+	lastMsg  string
 
+	// pair data
+	pair PairData
+
+	// logger
 	logger *logger.Logger
+}
+
+type PairData struct {
+	PairWanted int
+	LastChar   string
+	LastEmote  string
+	LastOffset string
+	LastFlip   string
 }
 
 // Makes a new client over a TCP connection. The client will log to the specified logger.
@@ -73,6 +90,7 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 		ipid:       ipid,
 		uid:        uid.Unjoined,
 		cid:        room.SpectatorCID,
+		pair:       PairData{PairWanted: -1},
 		logger:     log,
 	}
 
@@ -93,6 +111,7 @@ func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
 		ipid:   ipid,
 		uid:    uid.Unjoined,
 		cid:    room.SpectatorCID,
+		pair:   PairData{PairWanted: -1},
 		logger: log,
 	}
 }
@@ -517,15 +536,39 @@ func (c *Client) SetMute(m MuteState) {
 }
 
 func (c *Client) AddMute(m MuteState) {
-	c.mu.Unlock()
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mute |= m
 }
 
 func (c *Client) RemoveMute(m MuteState) {
-	c.mu.Unlock()
+	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.mute &= ^m
+}
+
+func (c *Client) LastMsg() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastMsg
+}
+
+func (c *Client) SetLastMsg(msg string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.lastMsg = msg
+}
+
+func (c *Client) PairData() PairData {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.pair
+}
+
+func (c *Client) SetPairData(pd PairData) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.pair = pd
 }
 
 func (c *Client) write(mesg string) {
