@@ -36,10 +36,10 @@ func (l *List) Remove(c *Client) {
 func (l *List) Clients() map[*Client]struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-    cpy := make(map[*Client]struct{})
-    for c := range l.set {
-        cpy[c] = struct{}{}
-    }
+	cpy := make(map[*Client]struct{})
+	for c := range l.set {
+		cpy[c] = struct{}{}
+	}
 	return cpy
 }
 
@@ -47,12 +47,12 @@ func (l *List) Clients() map[*Client]struct{} {
 func (l *List) ClientsJoined() map[*Client]struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-    cpy := make(map[*Client]struct{})
-    for c := range l.set {
-        if c.Joined() {
-            cpy[c] = struct{}{}
-        }
-    }
+	cpy := make(map[*Client]struct{})
+	for c := range l.set {
+		if c.Joined() {
+			cpy[c] = struct{}{}
+		}
+	}
 	return cpy
 }
 

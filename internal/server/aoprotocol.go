@@ -165,16 +165,17 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// for pairing. The first 17 arguments align exactly between both (if they exist).
 	resp := make([]string, 30)
 	copy(resp[:17], contents)
-	// Args 16, 17, 18, 20, 21 are pair-related.
-	// Now, the rest of the arguments are a bit cursed because of the misalignment.
+	// Args 16, 17, 18, 20, 21 are pair-related. We set the latter four appropriately later.
+	// Now, the rest of the arguments are a bit cursed because of the misalignment caused by the pairing args.
 	if len(contents) >= 19 {
-		// older clients don't support two-dimensional offsets
-		// but fuck them
 		resp[19] = contents[17] // (self_offset)
 		copy(resp[22:], contents[18:])
 	}
 
     /* BEGINNING OF VALIDATION */
+    // TODO: I might add the indices into the `packets` package eventually.
+    // Until then, refer to: https://github.com/AttorneyOnline/docs/blob/master/docs/development/network.md
+
 	// deskmod
 	if resp[0] == "chat" {
 		// This has been deprecated on newer clients, but we replace it anyhow.
@@ -280,7 +281,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	}
 
     // pairing
-    // we only validate it here, we check for the actual pairing at the end
+    // we're only validating for now. we check for the actual pairing at the end
 	otherCID, err := strconv.Atoi(strings.Split(resp[16], "^")[0])
 	if err != nil {
 		return
@@ -315,7 +316,8 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		return
 	}
 
-	// NOTE: frames arguments (25-27) do not require checking
+    // frames stuff (resp[25], resp[26], resp[27])
+	// does not require checking
 
 	// additive
 	// TODO: add check for last speaker
@@ -337,7 +339,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	c.SetSide(resp[5])
 	c.SetShowname(resp[15])
 	pd := client.PairData{
-		PairWanted: otherCID,
+		WantedCID: otherCID,
 		LastChar:   resp[2],
 		LastEmote:  resp[3],
 		LastFlip:   resp[12],
@@ -357,22 +359,24 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 			goto nopair
 		}
 		pd := other.PairData()
-		if pd.PairWanted == c.CID() && c.Side() == other.Side() {
+		if pd.WantedCID == c.CID() && c.Side() == other.Side() {
 			// resp[16] (other_charid) is already set correctly
 			resp[17] = pd.LastChar
 			resp[18] = pd.LastEmote
 			resp[20] = pd.LastOffset
 			resp[21] = pd.LastFlip
             goto paired
-		} else if pd.PairWanted != c.CID() {
+		} else if pd.WantedCID != c.CID() {
             var username string
             if c.Username() != "" {
                 username = " (" + c.Username() + ")"
             }
             srv.sendServerMessage(other, fmt.Sprintf("%v%v wants to pair with you!", c.Room().GetNameByCID(c.CID()), username))
         } else if c.Side() != other.Side() {
-            srv.sendServerMessage(other, "You're not in the same position as your pairing partner!")
-            srv.sendServerMessage(c, "You're not in the same position as your pairing partner!")
+            srv.sendServerMessage(other,
+                fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", c.Side()))
+            srv.sendServerMessage(c,
+                fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", other.Side()))
         }
 	}
 nopair:

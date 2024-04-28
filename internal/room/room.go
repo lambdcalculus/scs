@@ -70,7 +70,7 @@ type Room struct {
 	adjacent []*Room
 	chars    []*char
 	music    []MusicCategory
-    sides    []string
+	sides    []string
 
 	blankposting bool
 	iniswapping  bool
@@ -88,8 +88,8 @@ type Room struct {
 	lock     LockState
 
 	// could be another set...
-	users []*user
-    lastSpeaker int // CID
+	users       []*user
+	lastSpeaker int // CID
 
 	// A list of invited UIDs. Used to decide who can speak when the room spectatable,
 	// or who can enter when it is locked.
@@ -190,7 +190,7 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			desc:         conf.DefaultDesc,
 			chars:        chars,
 			music:        music,
-            sides:        conf.Sides,
+			sides:        conf.Sides,
 			blankposting: conf.AllowBlankpost,
 			iniswapping:  conf.AllowIniswap,
 			shouting:     conf.AllowShouting,
@@ -381,7 +381,6 @@ func (r *Room) SetSong(s string) {
 	r.song = s
 }
 
-
 // Returns the CID of the last speaker.
 func (r *Room) LastSpeaker() int {
 	r.mu.Lock()
@@ -393,8 +392,9 @@ func (r *Room) LastSpeaker() int {
 func (r *Room) SetLastSpeaker(cid int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-    r.lastSpeaker = cid
+	r.lastSpeaker = cid
 }
+
 // Returns whether blankposts are allowed.
 func (r *Room) AllowBlankpost() bool {
 	r.mu.Lock()
@@ -549,9 +549,9 @@ func (r *Room) MusicLen() int {
 func (r *Room) Sides() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-    sides := make([]string, len(r.sides))
-    copy(sides, r.sides)
-    return sides
+	sides := make([]string, len(r.sides))
+	copy(sides, r.sides)
+	return sides
 }
 
 // Returns the room's status.

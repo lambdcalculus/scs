@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/internal/logger"
-    "github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
@@ -32,7 +32,7 @@ func (srv *SCServer) listenTCP() {
 			break
 		}
 		c := client.NewTCPClient(conn, srv.logger)
-        srv.logger.Debugf("New TCP connection from %v (IPID: %v).", c.Addr(), c.IPID())
+		srv.logger.Debugf("New TCP connection from %v (IPID: %v).", c.Addr(), c.IPID())
 
 		go srv.handleTCPClient(c)
 	}
@@ -46,17 +46,17 @@ func (srv *SCServer) handleTCPClient(c *client.Client) {
 	// to this day, this is part of the handshake. lovely.
 	c.WriteAO("decryptor", "DEPRECATED")
 	for {
-        p, err := c.ReadAO()
-        if err != nil {
-            srv.logger.Debugf("Error in connection from %v (IPID: %v): %s.", c.Addr(), c.IPID(), err)
-        }
-        if p == nil {
-            if err == nil {
-                srv.logger.Debugf("EOF reached in connection from %v (IPID: %v).", c.Addr(), c.IPID())
-            }
-            break
-        }
-        srv.logger.Tracef("Received message from %v (IPID: %v) via TCP: %#v", c.Addr(), c.IPID(), *p)
+		p, err := c.ReadAO()
+		if err != nil {
+			srv.logger.Debugf("Error in connection from %v (IPID: %v): %s.", c.Addr(), c.IPID(), err)
+		}
+		if p == nil {
+			if err == nil {
+				srv.logger.Debugf("EOF reached in connection from %v (IPID: %v).", c.Addr(), c.IPID())
+			}
+			break
+		}
+		srv.logger.Tracef("Received message from %v (IPID: %v) via TCP: %#v", c.Addr(), c.IPID(), *p)
 		go srv.handlePacketAO(c, *p)
 	}
 }
@@ -116,7 +116,7 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 		for {
 			p, err := c.ReadAO()
 			if err != nil {
-                srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
+				srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
 				return
 			}
 			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
@@ -130,7 +130,7 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 					srv.logger.Debugf("Bad JSON by %v (IPID: %v) (%v).", c.Addr(), c.IPID(), err)
 					continue
 				}
-                srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
+				srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
 				break
 			}
 			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
@@ -148,7 +148,7 @@ func (srv *SCServer) validateClient(c *client.Client) error {
 	b := make(chan []byte)
 	e := make(chan error)
 	go func(c *client.Client, b chan []byte, e chan error) {
-	    mesg, err := c.ReadWS()
+		mesg, err := c.ReadWS()
 		if err != nil {
 			b <- nil
 			e <- err

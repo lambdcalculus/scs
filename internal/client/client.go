@@ -73,7 +73,7 @@ type Client struct {
 }
 
 type PairData struct {
-	PairWanted int
+	WantedCID  int
 	LastChar   string
 	LastEmote  string
 	LastOffset string
@@ -90,7 +90,7 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 		ipid:       ipid,
 		uid:        uid.Unjoined,
 		cid:        room.SpectatorCID,
-		pair:       PairData{PairWanted: -1},
+		pair:       PairData{WantedCID: -1},
 		logger:     log,
 	}
 
@@ -111,7 +111,7 @@ func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
 		ipid:   ipid,
 		uid:    uid.Unjoined,
 		cid:    room.SpectatorCID,
-		pair:   PairData{PairWanted: -1},
+		pair:   PairData{WantedCID: -1},
 		logger: log,
 	}
 }
@@ -397,8 +397,8 @@ func (c *Client) UpdateAmbiance() {
 	}
 }
 
-// Updates room list, char list, music list, background, current song, and ambiance, all according
-// to the current room the client is in.
+// Updates room list, char list, music list, background, sides, current song, and ambiance,
+// all according to the current room the client is in.
 func (c *Client) Update() {
 	c.UpdateRoomList()
 	c.UpdateMusicList()
