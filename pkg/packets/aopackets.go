@@ -7,17 +7,6 @@ type PacketAO struct {
     Contents []string
 }
 
-func MakeAOPacket(raw []byte) PacketAO {
-    parts := strings.Split(string(raw[:]), "#")
-    if len(parts) < 2 {
-        return PacketAO{}
-    }
-
-    return PacketAO{
-        Header: parts[0],
-        Contents: parts[1:len(parts)-1],
-    }
-}
 
 // Area updates for the ARUP packet.
 type AreaUpdate int
@@ -42,3 +31,49 @@ const (
 
 // The canonical stop song for AO.
 const SongStop string = "~stop.mp3"
+
+// Makes an AO packet from raw bytes.
+func MakeAOPacket(raw []byte) PacketAO {
+    sb := strings.Builder{}
+    sb.Write(raw)
+    parts := strings.Split(sb.String(), "#")
+
+    if len(parts) < 2 {
+        return PacketAO{}
+    }
+    return PacketAO{
+        Header: parts[0],
+        Contents: parts[1:],
+    }
+}
+
+// Because of the way AO packets work, we can't have '%', '&', '#' or "$" where they shouldn't be.
+// So they are encoded as '<percent>', '<and>', '<num>' and '<dollar>'.
+
+// Encodes an AO packet.
+func (p *PacketAO) Encode() {
+    for i, s := range p.Contents {
+        p.Contents[i] = encode(s)
+    }
+}
+
+// Decodes an AO packet.
+func (p *PacketAO) Decode() {
+    for i, s := range p.Contents {
+        p.Contents[i] = decode(s)
+    }
+}
+
+func encode(s string) string {
+	return strings.NewReplacer("%", "<percent>",
+		"&", "<and>",
+		"#", "<num>",
+		"$", "<dollar>").Replace(s)
+}
+
+func decode(s string) string {
+	return strings.NewReplacer("<percent>", "%",
+		"<and>", "&",
+		"<num>", "#",
+		"<dollar>", "$").Replace(s)
+}

@@ -137,10 +137,12 @@ func (c *Client) ReadAO() (*packets.PacketAO, error) {
 			return nil, err
 		}
 		p := packets.MakeAOPacket(b)
+        p.Decode()
 		return &p, nil
 	}
 	if c.tcpScanner.Scan() {
 		p := packets.MakeAOPacket(c.tcpScanner.Bytes())
+        p.Decode()
 		return &p, nil
 	}
 	return nil, c.tcpScanner.Err()
@@ -158,16 +160,17 @@ func (c *Client) ReadSC() (*packets.PacketSC, error) {
 
 // Creates and writes an encoded AO packet to the client.
 func (c *Client) WriteAO(header string, contents ...string) {
-	encoded := make([]string, len(contents))
-	for i, s := range contents {
-		encoded[i] = encode(s)
-	}
-	c.writef("%s#%s#%%", header, strings.Join(encoded, "#"))
+    p := packets.PacketAO{
+        Header: header,
+        Contents: contents,
+    }
+    c.WriteAOPacket(p)
 }
 
 // Writes an AO packet to the client.
 func (c *Client) WriteAOPacket(pkt packets.PacketAO) {
-	c.WriteAO(pkt.Header, pkt.Contents...)
+    pkt.Encode()
+	c.writef("%s#%s#%%", pkt.Header, strings.Join(pkt.Contents, "#"))
 }
 
 // Creates and writes a SC packet to the client.

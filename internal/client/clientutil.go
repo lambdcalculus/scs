@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"io"
 	"net"
-	"strings"
 
 	"crypto/md5"
 	"encoding/base64"
@@ -46,22 +45,4 @@ func splitAt(char byte) bufio.SplitFunc {
 		// Wait for more data.
 		return 0, nil, nil
 	}
-}
-
-// Because of the way AO packets work, we can't have '%', '&', '#' or "$" where they shouldn't be.
-// So they are encoded as '<percent>', '<and>', '<num>' and '<dollar>'.
-func encode(s string) string {
-    return strings.NewReplacer("%", "<percent>",
-                               "&", "<and>",
-                               "#", "<num>",
-                               "$", "<dollar>").Replace(s)
-}
-
-// we might not actually ever need to decode?
-// odds are the packet will just be invalid
-func decode(s string) string {
-    return strings.NewReplacer("<percent>", "%",
-                               "<and>", "&",
-                               "<num>", "#",
-                               "<dollar>", "$").Replace(s)
 }

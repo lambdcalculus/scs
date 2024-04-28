@@ -286,6 +286,17 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	if err != nil {
 		return
 	}
+
+    // self offset
+	// older clients don't support two-dimensional offsets
+	// but fuck them
+    offsets := strings.Split(resp[19], "&")
+    for _, off := range offsets {
+        if _, err := strconv.Atoi(off); err != nil {
+            return
+        }
+    }
+
 	// non-interrupting preanim ("immediate")
 	if resp[22] == "" {
 		resp[22] = "0"
