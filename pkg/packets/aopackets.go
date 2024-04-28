@@ -43,7 +43,7 @@ func MakeAOPacket(raw []byte) PacketAO {
     }
     return PacketAO{
         Header: parts[0],
-        Contents: parts[1:],
+        Contents: parts[1:len(parts)-1],
     }
 }
 
