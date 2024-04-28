@@ -23,7 +23,7 @@ type handlerAO struct {
 var handlerMapAO = map[string]handlerAO{
 	"HI":      {(*SCServer).handleHI, 1, 1, false},
 	"ID":      {(*SCServer).handleID, 2, 2, false},
-	"askchaa": {(*SCServer).handleAskCounts, 0, 0, false},
+	"askchaa": {(*SCServer).handleAskCounts, 0, 1, false}, // max args is 1 because some older clients send askchaa##%  for some reason
 	"RC":      {(*SCServer).handleRequestChars, 0, 0, false},
 	"RM":      {(*SCServer).handleRequestMusic, 0, 0, false},
 	"RD":      {(*SCServer).handleDone, 0, 0, false},
