@@ -23,10 +23,12 @@ type handlerAO struct {
 var handlerMapAO = map[string]handlerAO{
 	"HI":      {(*SCServer).handleHI, 1, 1, false},
 	"ID":      {(*SCServer).handleID, 2, 2, false},
-	"askchaa": {(*SCServer).handleAskCounts, 0, 1, false}, // max args is 1 because some older clients send askchaa##%  for some reason
-	"RC":      {(*SCServer).handleRequestChars, 0, 0, false},
-	"RM":      {(*SCServer).handleRequestMusic, 0, 0, false},
-	"RD":      {(*SCServer).handleDone, 0, 0, false},
+    // for some reason, some older clients seem to send an extra empty argument at the end of packets that
+    // should have no arguments. to account for this, the `maxArgs` for these packets is 1 instead of zero.
+	"askchaa": {(*SCServer).handleAskCounts, 0, 0+1, false},
+	"RC":      {(*SCServer).handleRequestChars, 0, 0+1, false},
+	"RM":      {(*SCServer).handleRequestMusic, 0, 0+1, false},
+	"RD":      {(*SCServer).handleDone, 0, 0+1, false},
 	"CC":      {(*SCServer).handleChangeChars, 3, 3, true},
 	"CT":      {(*SCServer).handleOOC, 2, 2, true},
 	"MC":      {(*SCServer).handleMusicArea, 2, 4, true},
