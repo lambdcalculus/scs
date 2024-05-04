@@ -223,7 +223,6 @@ func ReadRoles() (*Roles, error) {
 		return nil, fmt.Errorf("config: Couldn't read roles (%w).", err)
 	}
 	return &list, nil
-
 }
 
 // Returns the absolute path to the executable's directory, if it doesn't fail.

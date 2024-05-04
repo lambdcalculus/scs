@@ -71,8 +71,12 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 
 func (srv *SCServer) cmdHelp(c *client.Client, args []string) (string, bool) {
 	if len(args) == 0 {
-		// TODO: list commands
-		return "", false
+        // TODO: make this prettier
+        msg := "Available commands:\n"
+        for cmd := range cmdMap {
+            msg += "/" + cmd + ", "
+        }
+        return msg[:len(msg)-2], false
 	}
 	cmd, ok := cmdMap[args[0]]
 	if !ok {
@@ -93,6 +97,9 @@ func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool) {
 	for _, r := range srv.roles {
 		if r.Name == role {
 			c.SetPerms(r.Perms)
+            if r.Perms & perms.ModCall != 0 {
+                c.AddGuard()
+            }
 			// TODO: say permissions?
 			return fmt.Sprintf("Successfully authenticated as user '%v' and role '%v'.", args[0], role), false
 		}

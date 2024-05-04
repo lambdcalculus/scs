@@ -8,6 +8,7 @@ import (
 
 	"github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
@@ -38,8 +39,7 @@ var handlerMapAO = map[string]handlerAO{
 	// TODO:
 	// HP (judge bars)
 	// RT (wt/ce and testimony)
-	// AUTH (authentication)
-	// ZZ (call mod)
+	"ZZ": {(*SCServer).handleModCall, 1, 1, true},
 
 	// These will be repurposed for a better inventory system.
 	// LE (evidence list)
@@ -74,11 +74,11 @@ func (srv *SCServer) handleHI(c *client.Client, contents []string) {
 
 	c.WriteAO("FL",
 		"yellowtext", "flipping", "customobjections", "fastloading", "noencryption", // 2.1.0 features
-		"deskmod",                 // "evidence",                                                       // 2.3 - 2.5 features
-		"cccc_ic_support", "arup", //"casing_alerts", "modcall_reason",                // 2.6 features
+		"deskmod", /*"evidence",*/                                                   // 2.3 - 2.5 features
+		"cccc_ic_support", "arup", /*"casing_alerts",*/ "modcall_reason",            // 2.6 features
 		"looping_sfx", "additive", "effects", // 2.8 features
 		"y_offset", "expanded_desk_mods", // 2.9 features
-		// "auth_packet",                                                               // 2.9.1 feature
+		"auth_packet",                                                               // 2.9.1 feature
 	)
 
 	if srv.config.AssetURL != "" {
@@ -536,6 +536,16 @@ func (srv *SCServer) handleArea(c *client.Client, contents []string) {
 		return
 	}
 	srv.moveClient(c, dst)
+}
+
+func (srv *SCServer) handleModCall(c *client.Client, contents []string) {
+    msg := fmt.Sprintf("Mod called in %v (Room ID: %v).\nReason: %v", c.Room().Name(), c.Room().ID(), contents[0])
+	for c := range srv.clients.ClientsJoined() {
+		if c.Perms()&perms.ModCall != 0 {
+            // TODO: add who called mod?
+            c.ModCall(msg)
+		}
+	}
 }
 
 func (srv *SCServer) handleCheck(c *client.Client, contents []string) {

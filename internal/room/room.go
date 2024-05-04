@@ -348,6 +348,13 @@ change:
 	return true
 }
 
+// Returns the ID of the room.
+func (r *Room) ID() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.id
+}
+
 // Returns the name of the room.
 func (r *Room) Name() string {
 	r.mu.Lock()

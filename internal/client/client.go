@@ -318,6 +318,26 @@ func (c *Client) NotifyKick(reason string) {
 	}
 }
 
+// Adds the guard button on the client (AO-only?).
+func (c *Client) AddGuard() {
+    switch c.clientType {
+    case AOClient:
+        c.WriteAO("AUTH", "1")
+    case SCClient:
+        // no-op?
+    }
+}
+
+// Sends the client a mod call packet.
+func (c *Client) ModCall(msg string) {
+    switch c.clientType {
+    case AOClient:
+        c.WriteAO("ZZ", msg)
+    case SCClient:
+        // TODO
+    }
+}
+
 // Sends the client the char list of the room it is currently in.
 func (c *Client) UpdateCharList() {
 	switch c.Type() {
