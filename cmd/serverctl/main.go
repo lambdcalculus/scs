@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/pkg/logger"
     // TODO: right now this client ends up kind of big since we have to import the server package.
     // I'm not sure Go RPC allows for a way to do this without requiring that though.
 	"github.com/lambdcalculus/scs/internal/server"

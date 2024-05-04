@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/lambdcalculus/scs/internal/client"
-	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/pkg/packets"

@@ -4,7 +4,7 @@ import (
     "os"
 
     "github.com/lambdcalculus/scs/internal/server"
-    "github.com/lambdcalculus/scs/internal/logger"
+    "github.com/lambdcalculus/scs/pkg/logger"
 )
 
 func main() {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lambdcalculus/scs/internal/config"
-	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/pkg/logger"
 )
 
 // Returns the charlists in the configuration that correspond to the list of names in linear time.

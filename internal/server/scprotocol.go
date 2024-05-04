@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/lambdcalculus/scs/internal/client"
-	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
