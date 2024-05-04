@@ -16,6 +16,7 @@ type Server struct {
 	MaxPlayers int    `toml:"max_players"`
 	PortWS     int    `toml:"ws_port"`
 	PortTCP    int    `toml:"legacy_port"`
+	PortRPC    int    `toml:"rcp_port"`
 	AllowAO    bool   `toml:"allow_ao"`
 	AssetURL   string `toml:"asset_url"`
 	//TODO: AllowAO bool `toml:"allow_ao"`
@@ -35,6 +36,7 @@ func ServerDefault() *Server {
 		MaxPlayers:  100,
 		PortWS:      8080,
 		PortTCP:     8081,
+		PortRPC:     8082,
 		AssetURL:    "",
 		MaxMsgSize:  150,
 		MaxNameSize: 20,

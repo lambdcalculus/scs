@@ -1,17 +1,23 @@
-BINARY_PATH := bin/scs
+SERVER_BINARY := bin/scs
+SERVERCTL_BINARY := bin/serverctl
 
 SOURCES := $(shell find . -name '*.go')
+CONFIGS := $(shell find . -wholename 'config_sample/*.toml')
 
-build: $(SOURCES)
+server: $(SOURCES)
 	mkdir -p bin
-	go build -o $(BINARY_PATH) cmd/main.go
+	go build -o $(SERVER_BINARY) ./cmd/scs
 
-config: # watch out, this might delete your configs
+serverctl: cmd/serverctl/main.go 
+	mkdir -p bin
+	go build -o $(SERVERCTL_BINARY) ./cmd/serverctl
+
+config: $(CONFIGS) # watch out, this might delete your configs
 	mkdir -p bin/config
 	cp config_sample/* bin/config
 
-run: build
+run: server
 	./bin/scs
 
 .PHONY: all
-all: build config
+all: server serverctl

@@ -25,12 +25,13 @@ import (
 // Will stay at 0 until I stop introducing breaking changes constantly.
 const version int = 0
 
-// Represents a connection to the database. Used for database operations.
+// Represents a connection to the database. Used for database operations, goroutine-safe.
 type Database struct {
 	db *sql.DB
 	mu sync.Mutex
 }
 
+// Represents a ban in the database.
 type Ban struct {
 	BanID     int
 	IPID      string

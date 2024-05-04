@@ -60,9 +60,9 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 		return nil, fmt.Errorf("server: Couldn't get executable directory (%w).", err)
 	}
 	db, err := db.Init(execDir + "/database.sqlite")
-    if err != nil {
-        return nil, fmt.Errorf("server: Couldn't initialize database (%w).", err)
-    }
+	if err != nil {
+		return nil, fmt.Errorf("server: Couldn't initialize database (%w).", err)
+	}
 
 	srv := &SCServer{
 		config:  conf,
@@ -80,13 +80,17 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 // Starts and runs the server.
 func (srv *SCServer) Run() error {
 	srv.logger.Info("Starting server.")
-    // TODO: don't panic if one of the listeners panics
+	// TODO: don't panic if one of the listeners panics
 	if srv.config.PortWS > 0 {
 		go srv.listenWS()
 	}
 	if srv.config.PortTCP > 0 {
 		go srv.listenTCP()
 	}
+	if srv.config.PortRPC > 0 {
+		go srv.listenRPC()
+	}
+
 	select {
 	case err := <-srv.fatal:
 		return err
