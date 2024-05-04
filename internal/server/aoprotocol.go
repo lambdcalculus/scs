@@ -366,7 +366,11 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 
 	c.SetLastMsg(resp[4])
 	c.SetSide(resp[5])
-	c.SetShowname(resp[15])
+    if resp[15] == "" {
+        c.SetShowname(c.Room().GetNameByCID(c.CID()))
+    } else {
+        c.SetShowname(resp[15])
+    }
 	pd := client.PairData{
 		WantedCID:  otherCID,
 		LastChar:   resp[2],
@@ -452,7 +456,6 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 			srv.sendServerMessage(c, fmt.Sprintf("Username '%v' is already in use in the server.", name))
 			return
 		}
-
 	}
 
 	c.SetUsername(outName)
