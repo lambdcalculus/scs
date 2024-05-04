@@ -43,7 +43,7 @@ func (l *List) Clients() map[*Client]struct{} {
 	return cpy
 }
 
-// Returns the set of joined clients, which can be ranged over.
+// Returns a copy of the set of joined clients, which can be ranged over.
 func (l *List) ClientsJoined() map[*Client]struct{} {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -56,6 +56,7 @@ func (l *List) ClientsJoined() map[*Client]struct{} {
 	return cpy
 }
 
+// Returns the size of client list.
 func (l *List) Size() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -66,6 +67,7 @@ func (l *List) Size() int {
 	return count
 }
 
+// Returns the amount of clients in the list that are joined.
 func (l *List) SizeJoined() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()

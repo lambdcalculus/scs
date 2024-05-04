@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/internal/logger"
@@ -90,6 +91,20 @@ func (srv *SCServer) handleID(c *client.Client, contents []string) {
 }
 
 func (srv *SCServer) handleAskCounts(c *client.Client, contents []string) {
+    banned, bans, err := srv.db.CheckBanned(c.IPID(), c.Ident())
+    if err != nil {
+        srv.logger.Warnf("server: Error checking ban (%s).", err)
+    }
+    if banned {
+        var sb strings.Builder
+        for _, ban := range bans {
+            sb.WriteString(fmt.Sprintf("%s. (until: %s)\n", ban.Reason, ban.End.UTC().Format(time.UnixDate)))
+        }
+
+        c.WriteAO("BD", sb.String())
+        return
+    }
+
 	charCount := strconv.Itoa(srv.rooms[0].CharsLen())
 	musicCount := strconv.Itoa(srv.rooms[0].MusicLen())
 

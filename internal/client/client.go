@@ -183,7 +183,7 @@ func (c *Client) WriteSC(header string, data interface{}) {
 		c.logger.Tracef("Couldn't write JSON to %v (IPID: %v) (%v).", c.addr, c.ipid, err)
 		return
 	}
-	b, _ := json.Marshal(mesg) // cannot fail if we got here
+	b, _ := json.MarshalIndent(mesg, "", "  ") // cannot fail if we got here
 	c.logger.Tracef("Sent to %v (IPID: %v) via WS: %s.\n", c.addr, c.ipid, b)
 }
 

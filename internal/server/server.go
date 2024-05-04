@@ -10,6 +10,7 @@ import (
 
 	"github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/internal/config"
+	"github.com/lambdcalculus/scs/internal/db"
 	"github.com/lambdcalculus/scs/internal/logger"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/internal/uid"
@@ -18,11 +19,12 @@ import (
 
 type SCServer struct {
 	config *config.Server
-	rooms  []*room.Room
+	db     *db.Database
+
+	rooms []*room.Room
 
 	uidHeap uid.UIDHeap
 	clients *client.List
-	chars   config.CharList
 
 	fatal chan error
 
@@ -48,13 +50,23 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 	}
 	log.Debugf("Music config: %#v", musicConf)
 
-	rooms, err := room.MakeRooms(&charsConf, &musicConf)
+	rooms, err := room.MakeRooms(charsConf, musicConf)
 	if err != nil {
 		return nil, fmt.Errorf("server: Couldn't configure rooms (%w).", err)
 	}
 
+	execDir, err := config.ExecDir()
+	if err != nil {
+		return nil, fmt.Errorf("server: Couldn't get executable directory (%w).", err)
+	}
+	db, err := db.Init(execDir + "/database.sqlite")
+    if err != nil {
+        return nil, fmt.Errorf("server: Couldn't initialize database (%w).", err)
+    }
+
 	srv := &SCServer{
 		config:  conf,
+		db:      db,
 		rooms:   rooms,
 		uidHeap: *uid.CreateHeap(conf.MaxPlayers),
 		clients: client.NewList(),
@@ -68,6 +80,7 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 // Starts and runs the server.
 func (srv *SCServer) Run() error {
 	srv.logger.Info("Starting server.")
+    // TODO: don't panic if one of the listeners panics
 	if srv.config.PortWS > 0 {
 		go srv.listenWS()
 	}
@@ -146,7 +159,7 @@ func (srv *SCServer) removeClient(c *client.Client) {
 		c.Room().Leave(c.UID())
 		c.SetRoom(nil)
 	}
-	if c.UID() != 0 {
+	if c.UID() != uid.Unjoined {
 		srv.uidHeap.Free(c.UID())
 		srv.logger.Infof("Client with UID %v (IPID: %v) left.", c.UID(), c.IPID())
 		c.SetUID(uid.Unjoined)

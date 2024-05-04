@@ -119,7 +119,7 @@ type Music struct {
 
 // Attempts to read server configuration. Returns default server settings if it fails.
 func ReadServer() (*Server, error) {
-	execDir, err := getExecDir()
+	execDir, err := ExecDir()
 	if err != nil {
 		return ServerDefault(), fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
 	}
@@ -138,7 +138,7 @@ func ReadServer() (*Server, error) {
 
 // Attempts to read room settings. Returns the zero [RoomList] and an error if it fails.
 func ReadRooms() (*RoomList, error) {
-	execDir, err := getExecDir()
+	execDir, err := ExecDir()
 	if err != nil {
 		return nil, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
 	}
@@ -169,36 +169,37 @@ func countRooms(configDir string) (int, error) {
 }
 
 // Attempts to read character settings. Returns the zero [CharList] and an error if it fails.
-func ReadCharacters() (Characters, error) {
-	execDir, err := getExecDir()
+func ReadCharacters() (*Characters, error) {
+	execDir, err := ExecDir()
 	if err != nil {
-		return Characters{}, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
+		return nil, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
 	}
 	configDir := execDir + "/config"
 
 	var list Characters
 	if _, err = toml.DecodeFile(configDir+"/characters.toml", &list); err != nil {
-		return Characters{}, fmt.Errorf("config: Couldn't read rooms (%w).", err)
+		return nil, fmt.Errorf("config: Couldn't read characters (%w).", err)
 	}
-	return list, nil
+	return &list, nil
 }
 
 // Attempts to read music settings. Returns the zero [Music] and an error if it fails.
-func ReadMusic() (Music, error) {
-	execDir, err := getExecDir()
+func ReadMusic() (*Music, error) {
+	execDir, err := ExecDir()
 	if err != nil {
-		return Music{}, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
+		return nil, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
 	}
 	configDir := execDir + "/config"
 
 	var conf Music
 	if _, err = toml.DecodeFile(configDir+"/music.toml", &conf); err != nil {
-		return Music{}, fmt.Errorf("config: Couldn't read rooms (%w).", err)
+		return nil, fmt.Errorf("config: Couldn't read music (%w).", err)
 	}
-	return conf, nil
+	return &conf, nil
 }
 
-func getExecDir() (string, error) {
+// Returns the absolute path to the executable's directory, if it doesn't fail.
+func ExecDir() (string, error) {
 	execPath, err := os.Executable()
 	if err != nil {
 		return "", err

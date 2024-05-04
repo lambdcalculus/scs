@@ -22,7 +22,7 @@ func (srv *SCServer) listenTCP() {
 		srv.logger.Errorf("Couldn't listen on TCP (%v).", err)
 		return
 	}
-	srv.logger.Infof("Listening TCP on localhost:%v.", srv.config.PortTCP)
+	srv.logger.Infof("Listening TCP on port %v.", srv.config.PortTCP)
 	defer ln.Close()
 
 	for {
@@ -69,17 +69,18 @@ var (
 )
 
 func (srv *SCServer) listenWS() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/DATA", srv.dataEndpoint)
+	mux.HandleFunc("/", srv.wsEndpoint)
 	wsServer := &http.Server{
 		Addr:           fmt.Sprintf(":%v", srv.config.PortWS),
-		Handler:        nil, // DefaultServeMux
+		Handler:        mux,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	http.HandleFunc("/DATA", srv.dataEndpoint)
-	http.HandleFunc("/", srv.wsEndpoint)
 	// TODO: add a file server
-	srv.logger.Infof("Listening WS on localhost:%v.", srv.config.PortWS)
+	srv.logger.Infof("Listening WS on port %v.", srv.config.PortWS)
 	srv.logger.Errorf("Stopped serving WS: %v.", wsServer.ListenAndServe())
 }
 
