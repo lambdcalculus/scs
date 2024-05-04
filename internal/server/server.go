@@ -12,6 +12,7 @@ import (
 	"github.com/lambdcalculus/scs/internal/config"
 	"github.com/lambdcalculus/scs/internal/db"
 	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/internal/uid"
 	"github.com/lambdcalculus/scs/pkg/packets"
@@ -21,6 +22,7 @@ type SCServer struct {
 	config *config.Server
 	db     *db.Database
 
+	roles []perms.Role
 	rooms []*room.Room
 
 	uidHeap uid.UIDHeap
@@ -55,6 +57,11 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 		return nil, fmt.Errorf("server: Couldn't configure rooms (%w).", err)
 	}
 
+	roles, err := perms.MakeRoles()
+	if err != nil {
+		return nil, fmt.Errorf("server: Couldn't configure roles (%w).", err)
+	}
+
 	execDir, err := config.ExecDir()
 	if err != nil {
 		return nil, fmt.Errorf("server: Couldn't get executable directory (%w).", err)
@@ -67,6 +74,7 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 	srv := &SCServer{
 		config:  conf,
 		db:      db,
+		roles:   roles,
 		rooms:   rooms,
 		uidHeap: *uid.CreateHeap(conf.MaxPlayers),
 		clients: client.NewList(),
@@ -104,6 +112,16 @@ func (srv *SCServer) getByUID(id int) *client.Client {
 	}
 	for c := range srv.clients.Clients() {
 		if c.UID() == id {
+			return c
+		}
+	}
+	return nil
+}
+
+// Looks for a client with the given IPID. Returns `nil` if not found.
+func (srv *SCServer) getByIPID(id string) *client.Client {
+	for c := range srv.clients.Clients() {
+		if c.IPID() == id {
 			return c
 		}
 	}
@@ -155,6 +173,11 @@ func (srv *SCServer) sendServerMessageToRoom(r *room.Room, msg string) {
 	for _, c := range clients {
 		c.SendOOCMessage(srv.config.Username, msg, true)
 	}
+}
+
+func (srv *SCServer) kickClient(c *client.Client, reason string) {
+	c.NotifyKick(reason)
+	srv.removeClient(c)
 }
 
 // Disconnects and cleans up a client.

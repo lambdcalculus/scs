@@ -55,10 +55,11 @@ var StringToLevel = map[string]logger.LogLevel{
 
 type Room struct {
 	Name            string `toml:"name"`
+	DefaultDesc     string `toml:"description"`
 	DefaultBg       string `toml:"background"`
 	LockBg          bool   `toml:"lock_background"`
-	DefaultDesc     string `toml:"description"`
 	DefaultAmbiance string `toml:"ambiance"`
+	LockAmbiance    bool   `toml:"lock_ambiance"`
 
 	AdjacentRooms  []string `toml:"adjacent_rooms"`
 	CharLists      []string `toml:"character_lists"`
@@ -77,16 +78,17 @@ type Room struct {
 
 func RoomDefault() *Room {
 	return &Room{
-		Name:           "Unknown",
-		CharLists:      []string{"all"},
-		SongCategories: []string{"all"},
-		Sides:          []string{"wit", "def", "pro", "jud", "hld", "hlp"},
-		AdjacentRooms:  []string{},
-		LogMethods:     []string{"file"},
-		AllowBlankpost: true,
-		AllowShouting:  true,
-		AllowIniswap:   true,
-		ForceImmediate: false,
+		Name:            "Unknown",
+		DefaultAmbiance: "~stop.mp3",
+		CharLists:       []string{"all"},
+		SongCategories:  []string{"all"},
+		Sides:           []string{"wit", "def", "pro", "jud", "hld", "hlp"},
+		AdjacentRooms:   []string{},
+		LogMethods:      []string{"file"},
+		AllowBlankpost:  true,
+		AllowShouting:   true,
+		AllowIniswap:    true,
+		ForceImmediate:  false,
 	}
 }
 
@@ -119,6 +121,15 @@ type Music struct {
 	Categories []SongCategory `toml:"category"`
 }
 
+type Role struct {
+	Name        string   `toml:"name"`
+	Permissions []string `toml:"permissions"`
+}
+
+type Roles struct {
+	Confs []Role `toml:"role"`
+}
+
 // Attempts to read server configuration. Returns default server settings if it fails.
 func ReadServer() (*Server, error) {
 	execDir, err := ExecDir()
@@ -138,7 +149,7 @@ func ReadServer() (*Server, error) {
 // Currently, to enforce the default settings for rooms, we're reading the room list
 // twice. This isn't awful, but maybe we can do better. So, TODO: do better.
 
-// Attempts to read room settings. Returns the zero [RoomList] and an error if it fails.
+// Attempts to read room settings. Returns nil [RoomList] and an error if it fails.
 func ReadRooms() (*RoomList, error) {
 	execDir, err := ExecDir()
 	if err != nil {
@@ -170,7 +181,7 @@ func countRooms(configDir string) (int, error) {
 	return len(list.Confs), nil
 }
 
-// Attempts to read character settings. Returns the zero [CharList] and an error if it fails.
+// Attempts to read character settings. Returns nil [CharList] and an error if it fails.
 func ReadCharacters() (*Characters, error) {
 	execDir, err := ExecDir()
 	if err != nil {
@@ -185,7 +196,7 @@ func ReadCharacters() (*Characters, error) {
 	return &list, nil
 }
 
-// Attempts to read music settings. Returns the zero [Music] and an error if it fails.
+// Attempts to read music settings. Returns the nil [Music] and an error if it fails.
 func ReadMusic() (*Music, error) {
 	execDir, err := ExecDir()
 	if err != nil {
@@ -198,6 +209,21 @@ func ReadMusic() (*Music, error) {
 		return nil, fmt.Errorf("config: Couldn't read music (%w).", err)
 	}
 	return &conf, nil
+}
+
+func ReadRoles() (*Roles, error) {
+	execDir, err := ExecDir()
+	if err != nil {
+		return nil, fmt.Errorf("config: Couldn't find executable location (%w). Can't read configs.", err)
+	}
+	configDir := execDir + "/config"
+
+	var list Roles
+	if _, err = toml.DecodeFile(configDir+"/roles.toml", &list); err != nil {
+		return nil, fmt.Errorf("config: Couldn't read roles (%w).", err)
+	}
+	return &list, nil
+
 }
 
 // Returns the absolute path to the executable's directory, if it doesn't fail.

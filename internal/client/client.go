@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/lambdcalculus/scs/internal/logger"
+	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/internal/uid"
 	"github.com/lambdcalculus/scs/pkg/packets"
@@ -55,6 +56,7 @@ type Client struct {
 	ipid  string
 	uid   int
 	cid   int
+	perms perms.Mask
 
 	// state data
 	showname string
@@ -137,12 +139,12 @@ func (c *Client) ReadAO() (*packets.PacketAO, error) {
 			return nil, err
 		}
 		p := packets.MakeAOPacket(b)
-        p.Decode()
+		p.Decode()
 		return &p, nil
 	}
 	if c.tcpScanner.Scan() {
 		p := packets.MakeAOPacket(c.tcpScanner.Bytes())
-        p.Decode()
+		p.Decode()
 		return &p, nil
 	}
 	return nil, c.tcpScanner.Err()
@@ -160,16 +162,16 @@ func (c *Client) ReadSC() (*packets.PacketSC, error) {
 
 // Creates and writes an encoded AO packet to the client.
 func (c *Client) WriteAO(header string, contents ...string) {
-    p := packets.PacketAO{
-        Header: header,
-        Contents: contents,
-    }
-    c.WriteAOPacket(p)
+	p := packets.PacketAO{
+		Header:   header,
+		Contents: contents,
+	}
+	c.WriteAOPacket(p)
 }
 
 // Writes an AO packet to the client.
 func (c *Client) WriteAOPacket(pkt packets.PacketAO) {
-    pkt.Encode()
+	pkt.Encode()
 	c.writef("%s#%s#%%", pkt.Header, strings.Join(pkt.Contents, "#"))
 }
 
@@ -464,6 +466,18 @@ func (c *Client) SetCID(cid int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cid = cid
+}
+
+func (c *Client) Perms() perms.Mask {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.perms
+}
+
+func (c *Client) SetPerms(p perms.Mask) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.perms = p
 }
 
 func (c *Client) Room() *room.Room {

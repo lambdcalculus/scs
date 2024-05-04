@@ -22,14 +22,14 @@ type handlerAO struct {
 }
 
 var handlerMapAO = map[string]handlerAO{
-	"HI":      {(*SCServer).handleHI, 1, 1, false},
-	"ID":      {(*SCServer).handleID, 2, 2, false},
-    // for some reason, some older clients seem to send an extra empty argument at the end of packets that
-    // should have no arguments. to account for this, the `maxArgs` for these packets is 1 instead of zero.
-	"askchaa": {(*SCServer).handleAskCounts, 0, 0+1, false},
-	"RC":      {(*SCServer).handleRequestChars, 0, 0+1, false},
-	"RM":      {(*SCServer).handleRequestMusic, 0, 0+1, false},
-	"RD":      {(*SCServer).handleDone, 0, 0+1, false},
+	"HI": {(*SCServer).handleHI, 1, 1, false},
+	"ID": {(*SCServer).handleID, 2, 2, false},
+	// for some reason, some older clients seem to send an extra empty argument at the end of packets that
+	// should have no arguments. to account for this, the `maxArgs` for these packets is 1 instead of zero.
+	"askchaa": {(*SCServer).handleAskCounts, 0, 0 + 1, false},
+	"RC":      {(*SCServer).handleRequestChars, 0, 0 + 1, false},
+	"RM":      {(*SCServer).handleRequestMusic, 0, 0 + 1, false},
+	"RD":      {(*SCServer).handleDone, 0, 0 + 1, false},
 	"CC":      {(*SCServer).handleChangeChars, 3, 3, true},
 	"CT":      {(*SCServer).handleOOC, 2, 2, true},
 	"MC":      {(*SCServer).handleMusicArea, 2, 4, true},
@@ -91,19 +91,19 @@ func (srv *SCServer) handleID(c *client.Client, contents []string) {
 }
 
 func (srv *SCServer) handleAskCounts(c *client.Client, contents []string) {
-    banned, bans, err := srv.db.CheckBanned(c.IPID(), c.Ident())
-    if err != nil {
-        srv.logger.Warnf("server: Error checking ban (%s).", err)
-    }
-    if banned {
-        var sb strings.Builder
-        for _, ban := range bans {
-            sb.WriteString(fmt.Sprintf("%s. (until: %s)\n", ban.Reason, ban.End.UTC().Format(time.UnixDate)))
-        }
+	banned, bans, err := srv.db.CheckBanned(c.IPID(), c.Ident())
+	if err != nil {
+		srv.logger.Warnf("server: Error checking ban (%s).", err)
+	}
+	if banned {
+		var sb strings.Builder
+		for _, ban := range bans {
+			sb.WriteString(fmt.Sprintf("%s. (until: %s)\n", ban.Reason, ban.End.UTC().Format(time.UnixDate)))
+		}
 
-        c.WriteAO("BD", sb.String())
-        return
-    }
+		c.WriteAO("BD", sb.String())
+		return
+	}
 
 	charCount := strconv.Itoa(srv.rooms[0].CharsLen())
 	musicCount := strconv.Itoa(srv.rooms[0].MusicLen())
@@ -189,9 +189,9 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		copy(resp[22:], contents[18:])
 	}
 
-    /* BEGINNING OF VALIDATION */
-    // TODO: I might add the indices into the `packets` package eventually.
-    // Until then, refer to: https://github.com/AttorneyOnline/docs/blob/master/docs/development/network.md
+	/* BEGINNING OF VALIDATION */
+	// TODO: I might add the indices into the `packets` package eventually.
+	// Until then, refer to: https://github.com/AttorneyOnline/docs/blob/master/docs/development/network.md
 
 	// deskmod
 	if resp[0] == "chat" {
@@ -297,22 +297,22 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		return
 	}
 
-    // pairing
-    // we're only validating for now. we check for the actual pairing at the end
+	// pairing
+	// we're only validating for now. we check for the actual pairing at the end
 	otherCID, err := strconv.Atoi(strings.Split(resp[16], "^")[0])
 	if err != nil {
 		return
 	}
 
-    // self offset
+	// self offset
 	// older clients don't support two-dimensional offsets
 	// but fuck them
-    offsets := strings.Split(resp[19], "&")
-    for _, off := range offsets {
-        if _, err := strconv.Atoi(off); err != nil {
-            return
-        }
-    }
+	offsets := strings.Split(resp[19], "&")
+	for _, off := range offsets {
+		if _, err := strconv.Atoi(off); err != nil {
+			return
+		}
+	}
 
 	// non-interrupting preanim ("immediate")
 	if resp[22] == "" {
@@ -344,7 +344,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		return
 	}
 
-    // frames stuff (resp[25], resp[26], resp[27])
+	// frames stuff (resp[25], resp[26], resp[27])
 	// does not require checking
 
 	// additive
@@ -359,23 +359,23 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		resp[28] = "0"
 	}
 
-    // effects (resp[29])
+	// effects (resp[29])
 	// does not require checking
-    /* END OF VALIDATION */
+	/* END OF VALIDATION */
 
 	c.SetLastMsg(resp[4])
 	c.SetSide(resp[5])
 	c.SetShowname(resp[15])
 	pd := client.PairData{
-		WantedCID: otherCID,
+		WantedCID:  otherCID,
 		LastChar:   resp[2],
 		LastEmote:  resp[3],
 		LastFlip:   resp[12],
 		LastOffset: resp[19],
 	}
 	c.SetPairData(pd)
-    
-    // check for pairing
+
+	// check for pairing
 	if otherCID != -1 {
 		var other *client.Client
 		for _, cl := range srv.getClientsInRoom(c.Room()) {
@@ -393,19 +393,19 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 			resp[18] = pd.LastEmote
 			resp[20] = pd.LastOffset
 			resp[21] = pd.LastFlip
-            goto paired
+			goto paired
 		} else if pd.WantedCID != c.CID() {
-            var username string
-            if c.Username() != "" {
-                username = " (" + c.Username() + ")"
-            }
-            srv.sendServerMessage(other, fmt.Sprintf("%v%v wants to pair with you!", c.Room().GetNameByCID(c.CID()), username))
-        } else if c.Side() != other.Side() {
-            srv.sendServerMessage(other,
-                fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", c.Side()))
-            srv.sendServerMessage(c,
-                fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", other.Side()))
-        }
+			var username string
+			if c.Username() != "" {
+				username = " (" + c.Username() + ")"
+			}
+			srv.sendServerMessage(other, fmt.Sprintf("%v%v wants to pair with you!", c.Room().GetNameByCID(c.CID()), username))
+		} else if c.Side() != other.Side() {
+			srv.sendServerMessage(other,
+				fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", c.Side()))
+			srv.sendServerMessage(c,
+				fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", other.Side()))
+		}
 	}
 nopair:
 	resp[16] = "-1^" // other_charid (and front/back)
@@ -453,7 +453,21 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 		}
 
 	}
-	// TODO: commands!!!
+
+	// check for command
+	if outMsg[0] == '/' {
+		if len(outMsg) < 2 {
+			return
+		}
+		split := strings.Split(outMsg[1:], " ")
+		if len(split) > 1 {
+			srv.handleCommand(c, split[0], split[1:])
+		} else {
+			srv.handleCommand(c, split[0], []string{})
+		}
+		// TODO: log event
+		return
+	}
 
 	c.SetUsername(outName)
 	srv.sendOOCMessageToRoom(c.Room(), outName, outMsg, false)

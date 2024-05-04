@@ -6,17 +6,27 @@
 # Default value: "Unknown".
 name = "Lobby"
 
+# The description of the room.
+# Default value: "".
+description = "The lobby."
+
 # The default background of the room.
 # Default value: "".
 background = "RV - Center Lobby"
 
-# Whether to lock the background to the default (TODO: CMs may change it?).
+# Whether to lock the background to the default. Makes it so special permissions are required to change it.
+# If set to false, still requires users to have the Room Manager role or similar to change background.
 # Default: false.
 lock_background = true
 
-# The description of the room.
-# Default value: "".
-description = "The lobby."
+# The default ambiance track of the room.
+# Default value: "~stop.mp3".
+ambiance = "~stop.mp3"
+
+# Whether to lock the ambiance track to the default. Makes it so special permissions are required to change it.
+# If set to false, still requires users to have the Room Manager role or similar to change ambiance.
+# Default: false.
+lock_ambiance = true
 
 # Which character lists from `characters.toml` to include in the room's char list.
 # If "all" is in the list, then it will use all of them.

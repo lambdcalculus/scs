@@ -169,9 +169,6 @@ func (d *Database) GetBans(ipid string, hdid string) ([]Ban, error) {
 // Verify if a given IPID and HDID is banned. If either are a match, returns a list of
 // non-expired bans on this user.
 func (d *Database) CheckBanned(ipid string, hdid string) (bool, []Ban, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	bans, err := d.GetBans(ipid, hdid)
 	if err != nil {
 		return false, bans, err
@@ -243,19 +240,31 @@ func (d *Database) AddAuth(username string, password string, role string) error 
 	return nil
 }
 
-// Checks whether a given username and password authenticate to a user.
+// func (d *Database) UserExists(username string) (bool, error) {
+//     r := d.db.QueryRow("SELECT NULL FROM auth WHERE username = ?", username)
+//     if err := r.Scan(); err != nil {
+//         if err != sql.ErrNoRows {
+//             return false, err
+//         }
+//         return false, nil
+//     }
+//     return true, nil
+// }
+
+// Checks whether a given username and password authenticate to a user. Returns whether the authentication
+// was successful and the role the user has been authenticated to, along with an error should a DB error happen.
 func (d *Database) CheckAuth(username string, password string) (ok bool, role string, err error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	row := d.db.QueryRow("SELECT password, role FROM auth WHERE username = ?", username)
-	if row.Err() == sql.ErrNoRows {
-		// user doesn't exist
-		return false, "", nil
-	}
 	var hash string
 	// var role string
 	if err := row.Scan(&hash, &role); err != nil {
+		if err == sql.ErrNoRows {
+			// user doesn't exist
+			return false, "", nil
+		}
 		return false, "", err
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)); err != nil {

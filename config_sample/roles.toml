@@ -1,0 +1,13 @@
+# Roles define special permissions users can promote themselves to under certain circumstances.
+[[role]]
+# The name of the role.
+name = "Room Manager"
+
+# The special permissions of the role.
+# Default: [].
+# See [TODO: insert some wiki link] for a description of each option.
+permissions = ["status", "lock", "desc", "background", "ambiance"]
+
+[[role]]
+name = "Super"
+permissions = ["all"]

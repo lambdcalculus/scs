@@ -79,11 +79,13 @@ type Room struct {
 
 	// TODO: evidence? i kinda hate evidence
 	// TODO: CMs (and permissions in general)
+	// TODO: judge stuff
 
+	song     string
 	bg       string
 	lockBg   bool
-	song     string
 	ambiance string
+	lockAmb  bool
 	status   Status
 	lock     LockState
 
@@ -198,7 +200,7 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			bg:           conf.DefaultBg,
 			lockBg:       conf.LockBg,
 			song:         packets.SongStop, // the canonical "stop" song for AO
-			ambiance:     packets.SongStop, // the canonical "stop" song for AO
+			ambiance:     conf.DefaultAmbiance,
 			status:       StatusIdle,
 			lock:         LockFree,
 			invited:      make(map[int]struct{}),
