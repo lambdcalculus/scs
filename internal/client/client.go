@@ -234,6 +234,7 @@ func (c *Client) ChangeChar(cid int) {
 	}
 
 	c.SetCID(cid)
+    c.SetShowname(c.Room().GetNameByCID(cid))
 	switch c.clientType {
 	case AOClient:
 		c.WriteAO("PV", "OBSOLETE", "CID", strconv.Itoa(cid))

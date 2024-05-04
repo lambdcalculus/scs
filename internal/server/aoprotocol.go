@@ -142,6 +142,7 @@ func (srv *SCServer) handleDone(c *client.Client, contents []string) {
 	srv.rooms[0].Enter(room.SpectatorCID, uid)
 	c.SetUID(uid)
 	c.SetCID(room.SpectatorCID)
+    c.SetShowname("Spectator")
 	c.SetRoom(srv.rooms[0])
 	c.WriteAO("DONE")
 	logger.Debugf("Client joined with UID %v.", uid)
@@ -454,6 +455,7 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 
 	}
 
+	c.SetUsername(outName)
 	// check for command
 	if outMsg[0] == '/' {
 		if len(outMsg) < 2 {
@@ -469,7 +471,6 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 		return
 	}
 
-	c.SetUsername(outName)
 	srv.sendOOCMessageToRoom(c.Room(), outName, outMsg, false)
 	c.Room().LogEvent(room.EventOOC, "%v (CID: %v, UID: %v): %v", outName, c.CID(), c.UID(), outMsg)
 }

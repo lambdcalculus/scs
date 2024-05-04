@@ -36,6 +36,12 @@ func init() {
 			"/kick <cid|uid|ipid> [id] [reason: optional]",
 			"Kicks an user by CID, UID or IPID with an optional reason.\n" +
 				"Example usage: /kick uid 1 \"dumb and stupid\""},
+		"get": {(*SCServer).cmdGet, 1, perms.None,
+			"/get <room|rooms|allrooms>",
+            "Gets a list of users in a room or set of rooms. Use:\n" +
+				"\"/get room\" to get a list of users in the same room as you;\n" +
+				"\"/get rooms\" to get a list of users in the rooms that you can see;\n" +
+				"\"/get allrooms\" to get a list of all users in the server."},
 	}
 }
 
@@ -50,7 +56,7 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 		return
 	}
 	if c.Perms()&cmd.reqPerms != cmd.reqPerms {
-		srv.sendServerMessage(c, fmt.Sprintf("You do not have the required permisions to use /%v", name))
+		srv.sendServerMessage(c, fmt.Sprintf("You do not have the required permisions to use /%v.", name))
 		return
 	}
 	msg, usage := cmd.cmdFunc(srv, c, args)
@@ -71,12 +77,12 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 
 func (srv *SCServer) cmdHelp(c *client.Client, args []string) (string, bool) {
 	if len(args) == 0 {
-        // TODO: make this prettier
-        msg := "Available commands:\n"
-        for cmd := range cmdMap {
-            msg += "/" + cmd + ", "
-        }
-        return msg[:len(msg)-2], false
+		// TODO: make this prettier
+		msg := "Available commands:\n"
+		for cmd := range cmdMap {
+			msg += "/" + cmd + ", "
+		}
+		return msg[:len(msg)-2], false
 	}
 	cmd, ok := cmdMap[args[0]]
 	if !ok {
@@ -97,9 +103,9 @@ func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool) {
 	for _, r := range srv.roles {
 		if r.Name == role {
 			c.SetPerms(r.Perms)
-            if r.Perms & perms.ModCall != 0 {
-                c.AddGuard()
-            }
+			if r.Perms&perms.ModCall != 0 {
+				c.AddGuard()
+			}
 			// TODO: say permissions?
 			return fmt.Sprintf("Successfully authenticated as user '%v' and role '%v'.", args[0], role), false
 		}
@@ -126,6 +132,7 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 
 	case "cid":
 		cid, err := strconv.Atoi(args[1])
+		// TODO: check for Spectator?
 		if err != nil {
 			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false
 		}
@@ -151,5 +158,56 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 
 	default:
 		return "First argument must be 'ipid', 'cid', or 'uid'.", true
+	}
+}
+
+func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
+	switch args[0] {
+	// TODO: permissions and stuff
+	case "room":
+		var msg string
+		msg += fmt.Sprintf("%v (Room ID: %v):\n", c.Room().Name(), c.Room().ID())
+		for _, cl := range srv.getClientsInRoom(c.Room()) {
+			var username string
+			if cl.Username() != "" {
+				username = fmt.Sprintf("(%s) ", cl.Username())
+			}
+			msg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
+		}
+		return msg, false
+
+	case "rooms":
+		var msg string
+		for _, r := range c.Room().Visible() {
+			var submsg string
+            submsg += fmt.Sprintf("%v (Room ID: %v):\n", r.Name(), r.ID())
+			for _, cl := range srv.getClientsInRoom(r) {
+				var username string
+				if cl.Username() != "" {
+					username = fmt.Sprintf("(%s) ", cl.Username())
+				}
+				submsg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
+			}
+			msg += submsg + "\n"
+		}
+		return msg, false
+
+	case "allrooms":
+		var msg string
+		for _, r := range srv.rooms {
+			var submsg string
+            submsg += fmt.Sprintf("%v (Room ID: %v):\n", r.Name(), r.ID())
+			for _, cl := range srv.getClientsInRoom(r) {
+				var username string
+				if cl.Username() != "" {
+					username = fmt.Sprintf("(%s) ", cl.Username())
+				}
+				submsg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
+			}
+			msg += submsg + "\n"
+		}
+		return msg, false
+	default:
+		return "", true
 	}
 }
