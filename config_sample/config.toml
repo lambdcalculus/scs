@@ -22,10 +22,10 @@ ws_port = 8080
 # Default value: 8081.
 legacy_port = 8081
 
-# The port to use for RCP. Setting this enables usage of serverctl to run server commands
+# The port to use for RPC. Setting this enables usage of serverctl to run server commands
 # from the command line. Note that serverctl can only be used from local connections.
 # Default value: 8082
-rcp_port = 8082
+rpc_port = 8082
 
 # Whether to allow AO clients to join.
 # Default value: true.
