@@ -1,1 +1,3 @@
-bin/
+bin/*
+!bin/config_sample
+!bin/config_sample/*
