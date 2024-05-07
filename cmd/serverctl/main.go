@@ -7,10 +7,9 @@ import (
 	"os"
 	"strconv"
 
+	// using `t`` since we only require the RPC types
+	t "github.com/lambdcalculus/scs/pkg/rpc"
 	"github.com/lambdcalculus/scs/pkg/logger"
-    // TODO: right now this client ends up kind of big since we have to import the server package.
-    // I'm not sure Go RPC allows for a way to do this without requiring that though.
-	"github.com/lambdcalculus/scs/internal/server"
 	"github.com/spf13/pflag"
 )
 
@@ -32,6 +31,7 @@ type command struct {
 // )
 
 var commands map[string]command
+
 // TODO: detect port from config automatically?
 var rpcPort int
 
@@ -77,7 +77,7 @@ func main() {
 		os.Exit(1)
 	}
 
-    cmdName := pflag.Args()[0]
+	cmdName := pflag.Args()[0]
 	cmd, ok := commands[pflag.Args()[0]]
 	if !ok {
 		logger.Fatalf("Unknown command.")
@@ -92,11 +92,11 @@ func main() {
 		cmdArgs = pflag.Args()[1:]
 	}
 
-    if len(cmdArgs) < cmd.args {
-        logger.Fatalf("Not enough arguments for %v (need %v, got %v).", cmdName, cmd.args, len(cmdArgs))
-        handleHelp([]string{cmdName})
-        os.Exit(1)
-    }
+	if len(cmdArgs) < cmd.args {
+		logger.Fatalf("Not enough arguments for %v (need %v, got %v).", cmdName, cmd.args, len(cmdArgs))
+		handleHelp([]string{cmdName})
+		os.Exit(1)
+	}
 	cmd.handler(cmdArgs)
 	os.Exit(0)
 
@@ -128,46 +128,46 @@ func handleHelp(args []string) {
 }
 
 func handleAddAuth(args []string) {
-    client := dial()
-	rpcArgs := &server.AddAuthArgs{
+	client := dial()
+	rpcArgs := &t.AddAuthArgs{
 		Username: args[0],
 		Password: args[1],
 		Role:     args[2],
 	}
-    var reply int
-    if err := client.Call("SCServer.AddAuth", rpcArgs, &reply); err != nil {
-        logger.Errorf("add-auth: Failed (%s).", err)
-        os.Exit(1)
-    }
-    fmt.Printf("add-auth: User '%v' with role '%v' added succesfully!\n", args[0], args[2])
+	var reply int
+	if err := client.Call("DB.AddAuth", rpcArgs, &reply); err != nil {
+		logger.Errorf("add-auth: Failed (%s).", err)
+		os.Exit(1)
+	}
+	fmt.Printf("add-auth: User '%v' with role '%v' added succesfully!\n", args[0], args[2])
 }
 
 func handleRmAuth(args []string) {
-    client := dial()
-	rpcArgs := &server.RmAuthArgs{
+	client := dial()
+	rpcArgs := &t.RmAuthArgs{
 		Username: args[0],
 	}
-    var reply int
-    if err := client.Call("SCServer.RmAuth", rpcArgs, &reply); err != nil {
-        logger.Errorf("rm-auth: Failed (%s).", err)
-        os.Exit(1)
-    }
-    fmt.Printf("rm-auth: User '%v' removed succesfully!\n", args[0])
+	var reply int
+	if err := client.Call("DB.RmAuth", rpcArgs, &reply); err != nil {
+		logger.Errorf("rm-auth: Failed (%s).", err)
+		os.Exit(1)
+	}
+	fmt.Printf("rm-auth: User '%v' removed succesfully!\n", args[0])
 }
 
-func dial() (*rpc.Client) {
-    if rpcPort <= 0 {
-        logger.Fatalf("Port must be specified.")
-        pflag.CommandLine.Usage()
-        os.Exit(1)
-    }
+func dial() *rpc.Client {
+	if rpcPort <= 0 {
+		logger.Fatalf("Port must be specified.")
+		pflag.CommandLine.Usage()
+		os.Exit(1)
+	}
 
 	client, err := rpc.DialHTTP("tcp", "localhost:"+strconv.Itoa(rpcPort))
 	if err != nil {
 		logger.Fatalf("Couldn't dial server (%s).", err)
 		os.Exit(1)
 	}
-    return client
+	return client
 }
 
 func printUsage() {
