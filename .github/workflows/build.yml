@@ -40,7 +40,7 @@ jobs:
 
     - name: Copy sample config
       shell: bash
-      run: make config
+      run: mv bin/config_sample bin/config
 
     - name: Upload Artifact
       uses: actions/upload-artifact@master

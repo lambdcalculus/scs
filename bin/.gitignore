@@ -1,4 +1,4 @@
 *
 !.gitignore
-!config/
-!config/*
+!config_sample/
+!config_sample/*

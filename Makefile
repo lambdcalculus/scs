@@ -16,10 +16,6 @@ serverctl: cmd/serverctl/main.go
 	mkdir -p bin
 	go build -o $(SERVERCTL_BINARY) ./cmd/serverctl
 
-config: $(CONFIGS) # watch out, this might delete your configs
-	mkdir -p bin/config
-	cp config_sample/* bin/config
-
 run: server
 	./bin/scs
 
