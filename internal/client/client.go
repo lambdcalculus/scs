@@ -98,6 +98,8 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 		logger:     log,
 	}
 
+    // The default maximum token size is 64KiB.
+    // Way bigger than we need, but nobody's gonna crash the server if they send something that long, lol.
 	scanner := bufio.NewScanner(conn)
 	split := splitAt('%')
 	scanner.Split(split)
@@ -108,6 +110,10 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 
 // Makes a new client over a WebSocket connection. The client will log to the specified logger.
 func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
+    // Read limit is 64KiB, just because that's the default used by the scanner on the TCP side.
+    // Can be changed later, if necessary.
+    conn.SetReadLimit(64 << 10)
+
 	ipid := hashIP(conn.RemoteAddr())
 	return &Client{
 		wsConn: conn,
@@ -401,6 +407,17 @@ func (c *Client) UpdateSides() {
 	}
 }
 
+// Updates the prosecution/def bars.
+func (c *Client) UpdateBars() {
+    switch c.Type() {
+    case AOClient:
+        c.WriteAO("HP", "1", strconv.Itoa(int(c.Room().Bar(packets.BarDef))))
+        c.WriteAO("HP", "2", strconv.Itoa(int(c.Room().Bar(packets.BarPro))))
+    case SCClient:
+        // TODO
+    }
+}
+
 // Updates the music according to the current room.
 func (c *Client) UpdateSong() {
 	switch c.Type() {
@@ -442,6 +459,7 @@ func (c *Client) Update() {
 	c.UpdateCharList()
 	c.UpdateBackground()
 	c.UpdateSides()
+    c.UpdateBars()
 	c.UpdateSong()
 	c.UpdateAmbiance()
 }

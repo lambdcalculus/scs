@@ -29,8 +29,24 @@ const (
     EffectSync
 )
 
+
 // The canonical stop song for AO.
 const SongStop string = "~stop.mp3"
+
+// Bar selection for the HP packet.
+type BarSelect int
+
+const (
+    BarDef BarSelect = 1
+    BarPro BarSelect = 2
+)
+
+// Bar HP for the HP packet.
+type BarHP int
+const (
+    BarMin BarHP = 0
+    BarMax BarHP = 10
+)
 
 // Makes an AO packet from raw bytes.
 func MakeAOPacket(raw []byte) PacketAO {

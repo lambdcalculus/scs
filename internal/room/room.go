@@ -78,8 +78,9 @@ type Room struct {
 
 	// TODO: evidence? i kinda hate evidence
 	// TODO: CMs (and permissions in general)
-	// TODO: judge stuff
 
+	defBar   packets.BarHP
+	proBar   packets.BarHP
 	song     string
 	bg       string
 	lockBg   bool
@@ -202,6 +203,8 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			immediate:    conf.ForceImmediate,
 			bg:           conf.DefaultBg,
 			lockBg:       conf.LockBg,
+            defBar:       packets.BarMax,
+            proBar:       packets.BarMax,
 			song:         packets.SongStop, // the canonical "stop" song for AO
 			ambiance:     conf.DefaultAmbiance,
 			status:       StatusIdle,
@@ -371,6 +374,39 @@ func (r *Room) Background() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.bg
+}
+
+// Returns the prosecution/defense HP.
+func (r *Room) Bar(bar packets.BarSelect) packets.BarHP {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	switch bar {
+	case packets.BarPro:
+		return r.proBar
+	case packets.BarDef:
+		return r.defBar
+    default:
+        // make defBar the default because the compiler demands i put something here lol
+        return r.defBar
+	}
+}
+
+// Sets the prosecution/defense HP.
+func (r *Room) SetBar(bar packets.BarSelect, value packets.BarHP) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+    // we clamp the value here, just to be sure.
+    value = max(value, packets.BarMin)
+    value = min(value, packets.BarMax)
+	switch bar {
+	case packets.BarPro:
+        r.proBar = value
+	case packets.BarDef:
+		r.defBar = value
+    default:
+        // make defBar the default because the compiler demands i put something here lol
+        r.defBar = value
+	}
 }
 
 // Returns the current song in the room.

@@ -266,5 +266,4 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 	}
 	// TODO: send only to adjacent rooms?
 	srv.sendRoomUpdateAllAO(packets.UpdatePlayer)
-	// TODO: enter/leave OOC message
 }

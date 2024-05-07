@@ -36,10 +36,9 @@ var handlerMapAO = map[string]handlerAO{
 	"MC":      {(*SCServer).handleMusicArea, 2, 4, true},
 	"CH":      {(*SCServer).handleCheck, 1, 1, true},
 	"MS":      {(*SCServer).handleIC, 15, 26, true},
-	// TODO:
-	// HP (judge bars)
-	// RT (wt/ce and testimony)
-	"ZZ": {(*SCServer).handleModCall, 1, 1, true},
+	"HP":      {(*SCServer).handleBar, 2, 2, true},
+	"RT":      {(*SCServer).handleJudge, 1, 2, true},
+	"ZZ":      {(*SCServer).handleModCall, 1, 1, true},
 
 	// These will be repurposed for a better inventory system.
 	// LE (evidence list)
@@ -149,6 +148,7 @@ func (srv *SCServer) handleDone(c *client.Client, contents []string) {
 
 	c.UpdateBackground()
 	c.UpdateSides()
+	c.UpdateBars()
 	c.UpdateSong()
 	c.UpdateAmbiance()
 	srv.sendRoomUpdateAllAO(packets.UpdateAll)
@@ -594,6 +594,61 @@ func (srv *SCServer) handleArea(c *client.Client, contents []string) {
 		return
 	}
 	srv.moveClient(c, dst)
+}
+
+func (srv *SCServer) handleBar(c *client.Client, contents []string) {
+	if c.MuteState()&client.MutedJudge != 0 {
+		c.Room().LogEvent(room.EventFail, "%s tried changing HP bars but was blocked from judge commands.", c.LongString())
+		srv.sendServerMessage(c, "You are currently blocked from using judge commands.")
+		return
+	}
+	if (c.Room().LockState() == room.LockSpec) && !c.Room().IsInvited(c.UID()) {
+		c.Room().LogEvent(room.EventFail, "%s tried changing HP bars but was not invited.", c.LongString())
+		srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
+		return
+	}
+
+	bar, err := strconv.Atoi(contents[0])
+	if err != nil || (bar != int(packets.BarDef) && bar != int(packets.BarPro)) {
+		c.Room().LogEvent(room.EventFail, "%s tried sending an invalid HP packet (bar not 1 or 2): %#v.", c.LongString(), contents)
+		return
+	}
+	val, err := strconv.Atoi(contents[1])
+	if err != nil || val < 0 || val > 10 {
+		c.Room().LogEvent(room.EventJudge, "%s tried sending an invalid HP packet (invalid hp value): %#v.", c.LongString(), contents)
+	}
+
+	// validated
+
+	c.Room().SetBar(packets.BarSelect(bar), packets.BarHP(val))
+	for _, cl := range srv.getClientsInRoom(c.Room()) {
+		cl.UpdateBars()
+	}
+
+	var barStr string
+	if packets.BarSelect(bar) == packets.BarPro {
+		barStr = "prosecution"
+	} else {
+		barStr = "defense"
+	}
+	c.Room().LogEvent(room.EventJudge, "%s set the %s bar to %v.", c.LongString(), barStr, val)
+
+}
+
+func (srv *SCServer) handleJudge(c *client.Client, contents []string) {
+	// TODO: i dont think im really going to care if the client is in 'jud'
+	// but if this causes problems, then only allow judge stuff in this pos.
+	if c.MuteState()&client.MutedJudge != 0 {
+		c.Room().LogEvent(room.EventFail, "%s tried using a splash animation but was blocked from judge commands.", c.LongString())
+		srv.sendServerMessage(c, "You are currently blocked from using judge commands.")
+		return
+	}
+	if (c.Room().LockState() == room.LockSpec) && !c.Room().IsInvited(c.UID()) {
+		c.Room().LogEvent(room.EventFail, "%s tried using a splash animation but was not invited.", c.LongString())
+		srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
+		return
+	}
+	srv.writeToRoomAO(c.Room(), "RT", contents...)
 }
 
 func (srv *SCServer) handleModCall(c *client.Client, contents []string) {
