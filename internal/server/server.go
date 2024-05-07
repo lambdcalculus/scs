@@ -118,11 +118,12 @@ func (srv *SCServer) getByUID(id int) *client.Client {
 	return nil
 }
 
-// Looks for a client with the given IPID. Returns `nil` if not found.
-func (srv *SCServer) getByIPID(id string) *client.Client {
+// Looks for all clients with the given IPID. If none found, returns `nil`.
+func (srv *SCServer) getByIPID(id string) []*client.Client {
+	var clients []*client.Client
 	for c := range srv.clients.Clients() {
 		if c.IPID() == id {
-			return c
+			clients = append(clients, c)
 		}
 	}
 	return nil
@@ -168,11 +169,8 @@ func (srv *SCServer) sendOOCMessageToRoom(r *room.Room, username string, msg str
 }
 
 // Sends a server message to all clients in the specified room.
-func (srv *SCServer) sendServerMessageToRoom(r *room.Room, msg string) {
-	clients := srv.getClientsInRoom(r)
-	for _, c := range clients {
-		c.SendOOCMessage(srv.config.Username, msg, true)
-	}
+func (srv *SCServer) sendServerMessageToRoom(r *room.Room, format string, a ...any) {
+	srv.sendOOCMessageToRoom(r, srv.config.Username, fmt.Sprintf(format, a...), true)
 }
 
 func (srv *SCServer) kickClient(c *client.Client, reason string) {
@@ -183,6 +181,8 @@ func (srv *SCServer) kickClient(c *client.Client, reason string) {
 // Disconnects and cleans up a client.
 func (srv *SCServer) removeClient(c *client.Client) {
 	if c.Room() != nil {
+		srv.sendServerMessageToRoom(c.Room(), fmt.Sprintf("%s has disconnected.", c.ShortString()))
+		c.Room().LogEvent(room.EventExit, "%s disconnected.", c.LongString())
 		c.Room().Leave(c.UID())
 		c.SetRoom(nil)
 	}
@@ -206,8 +206,8 @@ func (srv *SCServer) writeToAllAO(header string, contents ...string) {
 }
 
 // Sends a server message to the client.
-func (srv *SCServer) sendServerMessage(c *client.Client, msg string) {
-	c.SendOOCMessage(srv.config.Username, msg, true)
+func (srv *SCServer) sendServerMessage(c *client.Client, format string, a ...any) {
+	c.SendOOCMessage(srv.config.Username, fmt.Sprintf(format, a...), true)
 }
 
 // Sends an ARUP to all AO clients.
@@ -233,12 +233,12 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 		return
 	}
 	if (dst.LockState()&room.LockLocked != 0) && !dst.IsInvited(c.UID()) {
+		dst.LogEvent(room.EventFail, "%s tried to enter uninvited.", c.LongString())
 		srv.sendServerMessage(c, "You are not invited to this room!")
 		return
 	}
 
-	srv.sendServerMessage(c, fmt.Sprintf("Moved to %v.", dst.Name()))
-	srv.sendServerMessage(c, fmt.Sprintf("Description: %v", dst.Desc()))
+	srv.sendServerMessage(c, "Moved to [%v] %s. Description: %s", dst.ID(), dst.Name(), dst.Desc())
 	newCID, ok := dst.GetCIDByName(currRoom.GetNameByCID(c.CID()))
 	if !ok {
 		srv.sendServerMessage(c, "Your character is not in this room's list. Changing to Spectator.")
@@ -249,11 +249,18 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 		newCID = room.SpectatorCID
 		dst.Enter(newCID, c.UID())
 	}
-	currRoom.Leave(c.UID())
-
+	// TODO: autopass on/off or sneaking? see how other servers do it
+	srv.sendServerMessageToRoom(dst, "%s enters from [%v] %s.", c.ShortString(), currRoom.ID(), currRoom.Name())
+	dst.LogEvent(room.EventEnter, "%s enters from [%v] %s.", c.LongString(), currRoom.ID(), currRoom.Name())
 	c.SetRoom(dst)
+
+	currRoom.Leave(c.UID())
+	srv.sendServerMessageToRoom(currRoom, "%s leaves to [%v] %s.", c.ShortString(), dst.ID(), dst.Name())
+	currRoom.LogEvent(room.EventExit, "%s leaves to [%v] %s.", c.LongString(), dst.ID(), dst.Name())
+
 	c.Update()
 	c.ChangeChar(newCID)
+
 	if c.Type() == client.AOClient {
 		c.SendRoomUpdateAO(packets.UpdateAll & ^packets.UpdatePlayer)
 	}

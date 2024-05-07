@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/lambdcalculus/scs/internal/client"
-	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
+	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
@@ -74,11 +74,11 @@ func (srv *SCServer) handleHI(c *client.Client, contents []string) {
 
 	c.WriteAO("FL",
 		"yellowtext", "flipping", "customobjections", "fastloading", "noencryption", // 2.1.0 features
-		"deskmod", /*"evidence",*/                                                   // 2.3 - 2.5 features
-		"cccc_ic_support", "arup", /*"casing_alerts",*/ "modcall_reason",            // 2.6 features
+		"deskmod",                                                        /*"evidence",*/ // 2.3 - 2.5 features
+		"cccc_ic_support", "arup" /*"casing_alerts",*/, "modcall_reason", // 2.6 features
 		"looping_sfx", "additive", "effects", // 2.8 features
 		"y_offset", "expanded_desk_mods", // 2.9 features
-		"auth_packet",                                                               // 2.9.1 feature
+		"auth_packet", // 2.9.1 feature
 	)
 
 	if srv.config.AssetURL != "" {
@@ -109,8 +109,8 @@ func (srv *SCServer) handleAskCounts(c *client.Client, contents []string) {
 	musicCount := strconv.Itoa(srv.rooms[0].MusicLen())
 
 	if srv.clients.SizeJoined() >= srv.config.MaxPlayers {
-		c.Notify("Server is full.")
-		logger.Info("A client couldn't join because of the server is full.")
+		c.Notify("The server is full.")
+		srv.logger.Infof("A client (IPID: %v) couldn't join because the server is full.", c.IPID())
 		srv.removeClient(c)
 		return
 	}
@@ -142,10 +142,10 @@ func (srv *SCServer) handleDone(c *client.Client, contents []string) {
 	srv.rooms[0].Enter(room.SpectatorCID, uid)
 	c.SetUID(uid)
 	c.SetCID(room.SpectatorCID)
-    c.SetShowname("Spectator")
+	c.SetCharname("Spectator")
 	c.SetRoom(srv.rooms[0])
 	c.WriteAO("DONE")
-	logger.Debugf("Client joined with UID %v.", uid)
+	logger.Debugf("A client has joined with UID %v.", uid)
 
 	c.UpdateBackground()
 	c.UpdateSides()
@@ -160,6 +160,12 @@ func (srv *SCServer) handleChangeChars(c *client.Client, contents []string) {
 		return
 	}
 	c.ChangeChar(cid)
+	if !c.CharPicked() {
+		srv.sendServerMessageToRoom(srv.rooms[0], fmt.Sprintf("%s has joined the server!", c.ShortString()))
+		srv.rooms[0].LogEvent(room.EventEnter, "%s joined the server.", c.LongString())
+		c.SetCharPicked(true)
+	}
+	// TODO: announce change of chars in room?
 	// TODO: SpriteChat version
 	srv.writeToRoomAO(c.Room(), "CharsCheck", c.Room().TakenList()...)
 }
@@ -167,17 +173,29 @@ func (srv *SCServer) handleChangeChars(c *client.Client, contents []string) {
 func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// Welcome to He11. It is time to validate an IC message.
 	if c.CID() == room.SpectatorCID {
+		c.Room().LogEvent(room.EventFail, "%s tried speaking IC as a Spectator.", c.LongString())
 		srv.sendServerMessage(c, "Spectators cannot speak.")
 		return
 	}
 	if c.MuteState()&client.MutedIC != 0 {
+		c.Room().LogEvent(room.EventFail, "%s tried to speak IC, but was muted.", c.LongString())
 		srv.sendServerMessage(c, "You are IC muted!")
 		return
 	}
 	if c.Room().LockState() == room.LockSpec && !c.Room().IsInvited(c.UID()) {
+		c.Room().LogEvent(room.EventFail, "%s tried to speak IC but was not invited.", c.LongString())
 		srv.sendServerMessage(c, "This room is in spectatable mode and you are not on the invite list.")
 		return
 	}
+	var valid bool = false
+	var reason string
+	defer func() {
+		if !valid {
+			srv.logger.Infof("%s sent an invalid IC packet (%s): %#v", c.LongString(), reason, contents)
+			c.Room().LogEvent(room.EventFail, "%s sent an invalid IC packet (%s): %#v", c.LongString(), reason, contents)
+			return
+		}
+	}()
 
 	// The client IC packet can have between 15 and 26 arguments. The server has 30, due to extra information
 	// for pairing. The first 17 arguments align exactly between both (if they exist).
@@ -200,13 +218,16 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		resp[0] = "1"
 	}
 	if mod, err := strconv.Atoi(resp[0]); err != nil || mod < 0 || mod > 5 {
+		reason = "Invalid deskmod."
+		srv.sendServerMessage(c, reason)
 		return
 	}
 
 	// char name (i.e. the actual file)
 	iniswapping := (c.Room().GetNameByCID(c.CID()) != resp[2])
 	if !c.Room().AllowIniswapping() && iniswapping {
-		srv.sendServerMessage(c, "Iniswapping is not allowed in this room!")
+		reason = "Iniswapping is not allowed in this room!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 
@@ -216,30 +237,33 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// message
 	resp[4] = strings.TrimSpace(resp[4])
 	if len(resp[4]) > srv.config.MaxMsgSize {
-		srv.sendServerMessage(c, "Your message is too long!")
+		reason = "Your message is too long!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 	if !c.Room().AllowBlankpost() && resp[4] == "" {
-		srv.sendServerMessage(c, "Blankposting is not allowed in this room!")
+		reason = "Blankposting is not allowed in this room!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 	if c.Room().LastSpeaker() == c.CID() && c.LastMsg() == resp[4] && c.LastMsg() != "" {
-		srv.sendServerMessage(c, "You just sent that message! Watch out for lag.")
+		reason = "You just sent that message! Watch out for lag."
+		srv.sendServerMessage(c, reason)
 		return
 	}
 
 	// pos/side
-	valid := false
+	validPos := false
 	for _, side := range c.Room().Sides() {
 		if resp[5] == side {
-			valid = true
+			validPos = true
 		}
 	}
-	if !valid {
+	if !validPos {
 		if len(c.Room().Sides()) > 0 {
 			resp[5] = c.Room().Sides()[0]
 		} else {
-			resp[5] = "wit"
+			resp[5] = "wit" // TODO: un-hardcode
 		}
 	}
 
@@ -251,12 +275,13 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		resp[7] = "6"
 	}
 	if mod, err := strconv.Atoi(resp[7]); err != nil || mod < 0 || mod > 6 {
+		reason = "Invalid emote mod."
 		return
 	}
 
 	// char id
 	if resp[8] != strconv.Itoa(c.CID()) {
-		// incorrect CID
+		reason = "Incorrect CID."
 		return
 	}
 
@@ -264,7 +289,8 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// old clients dont support the '4&custom' modifier
 	// but fuck them
 	if !c.Room().AllowShouting() && resp[10] != "0" {
-		srv.sendServerMessage(c, "Shhh! Shouting is not allowed in this room!")
+		reason = "Shhh! Shouting is not allowed in this room!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 	if mod, err := strconv.Atoi(strings.Split(resp[10], "&")[0]); err != nil || mod < 0 || mod > 4 {
@@ -277,16 +303,19 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 
 	// flipping
 	if _, err := strconv.ParseBool(resp[12]); err != nil {
+		reason = "Invalid flip."
 		return
 	}
 
 	// realization
 	if _, err := strconv.ParseBool(resp[13]); err != nil {
+		reason = "Invalid realization."
 		return
 	}
 
 	// text color
 	if c, err := strconv.Atoi(resp[14]); err != nil || c < 0 || c > 11 {
+		reason = "Invalid text color."
 		return
 	}
 
@@ -294,7 +323,8 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// showname
 	resp[15] = strings.TrimSpace(resp[15])
 	if len(resp[15]) > srv.config.MaxNameSize {
-		srv.sendServerMessage(c, "Your showname is too long!")
+		reason = "Your showname is too long!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 
@@ -302,6 +332,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// we're only validating for now. we check for the actual pairing at the end
 	otherCID, err := strconv.Atoi(strings.Split(resp[16], "^")[0])
 	if err != nil {
+		reason = "Invalid pair."
 		return
 	}
 
@@ -311,6 +342,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	offsets := strings.Split(resp[19], "&")
 	for _, off := range offsets {
 		if _, err := strconv.Atoi(off); err != nil {
+			reason = "Invalid self-offset."
 			return
 		}
 	}
@@ -319,6 +351,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	if resp[22] == "" {
 		resp[22] = "0"
 	} else if b, err := strconv.ParseBool(resp[22]); err != nil {
+		reason = "Invalid immediate."
 		return
 	} else if b || c.Room().ForceImmediate() {
 		resp[22] = "1" // in case we got here due to room forcing immediate
@@ -335,6 +368,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	if resp[23] == "" {
 		resp[23] = "0"
 	} else if _, err := strconv.ParseBool(resp[23]); err != nil {
+		reason = "Invalid sfx looping."
 		return
 	}
 
@@ -342,6 +376,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	if resp[24] == "" {
 		resp[24] = "0"
 	} else if _, err := strconv.ParseBool(resp[24]); err != nil {
+		reason = "Invalid screenshake."
 		return
 	}
 
@@ -363,14 +398,12 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// effects (resp[29])
 	// does not require checking
 	/* END OF VALIDATION */
+	valid = true
 
+	c.SetCharname(resp[2])
 	c.SetLastMsg(resp[4])
 	c.SetSide(resp[5])
-    if resp[15] == "" {
-        c.SetShowname(c.Room().GetNameByCID(c.CID()))
-    } else {
-        c.SetShowname(resp[15])
-    }
+	c.SetShowname(resp[15])
 	pd := client.PairData{
 		WantedCID:  otherCID,
 		LastChar:   resp[2],
@@ -400,11 +433,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 			resp[21] = pd.LastFlip
 			goto paired
 		} else if pd.WantedCID != c.CID() {
-			var username string
-			if c.Username() != "" {
-				username = " (" + c.Username() + ")"
-			}
-			srv.sendServerMessage(other, fmt.Sprintf("%v%v wants to pair with you!", c.Room().GetNameByCID(c.CID()), username))
+			srv.sendServerMessage(other, "%v wants to pair with you!", c.ShortString())
 		} else if c.Side() != other.Side() {
 			srv.sendServerMessage(other,
 				fmt.Sprintf("You're not in the same position as your pairing partner! Their pos is '%v'.", c.Side()))
@@ -421,42 +450,66 @@ nopair:
 paired:
 
 	c.Room().SetLastSpeaker(c.CID())
+	name := c.Charname()
+	if c.Showname() != "" {
+		name = c.Showname()
+	}
+	c.Room().LogEvent(room.EventIC, "%s: %s | (from %s)", name, resp[4], c.LongString())
 	srv.writeToRoomAO(c.Room(), "MS", resp...)
 }
 
 func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 	if c.MuteState()&client.MutedOOC != 0 {
+		c.Room().LogEvent(room.EventFail, "%s tried to speak in OOC, but was muted.", c.LongString())
 		srv.sendServerMessage(c, "You are OOC muted!")
 		return
 	}
 	name := contents[0]
 	msg := contents[1]
 
+	var valid bool = false
+	var reason string
+	defer func() {
+		if !valid {
+			c.Room().LogEvent(room.EventFail, "%s sent an invalid OOC message (%s): %#v",
+				c.LongString(), reason, contents)
+		}
+	}()
+
 	outMsg := strings.TrimSpace(msg)
 	if outMsg == "" {
-		srv.sendServerMessage(c, "Cannot send blank OOC message.")
+		reason = "Cannot send blank OOC message."
+		srv.sendServerMessage(c, reason)
 		return
 	}
 	if len(outMsg) > srv.config.MaxMsgSize {
-		srv.sendServerMessage(c, "Your message is too long!")
+		reason = "Your message is too long!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 
 	outName := strings.TrimSpace(name)
 	if outName == "" {
-		srv.sendServerMessage(c, "Set a username to send OOC messages!")
+		reason = "Set a username to send OOC messages!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
 	if len(outName) > srv.config.MaxNameSize {
-		srv.sendServerMessage(c, "Your username is too long!")
+		reason = "Your username is too long!"
+		srv.sendServerMessage(c, reason)
 		return
 	}
+	// TODO: make username check room-based?
+	// this would require making changes to moveClient.
 	for cl := range srv.clients.Clients() {
 		if cl.Username() == outName && cl != c {
-			srv.sendServerMessage(c, fmt.Sprintf("Username '%v' is already in use in the server.", name))
+			reason = fmt.Sprintf("Username '%v' is already in use in the server.", name)
+			srv.sendServerMessage(c, reason)
 			return
 		}
 	}
+
+	valid = true
 
 	c.SetUsername(outName)
 	// check for command
@@ -470,12 +523,11 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 		} else {
 			srv.handleCommand(c, split[0], []string{})
 		}
-		// TODO: log event
 		return
 	}
 
 	srv.sendOOCMessageToRoom(c.Room(), outName, outMsg, false)
-	c.Room().LogEvent(room.EventOOC, "%v (CID: %v, UID: %v): %v", outName, c.CID(), c.UID(), outMsg)
+	c.Room().LogEvent(room.EventOOC, "%s: %s | (from %s)", outName, outMsg, c.LongString())
 }
 
 func (srv *SCServer) handleMusicArea(c *client.Client, contents []string) {
@@ -497,10 +549,12 @@ func (srv *SCServer) handleMusicArea(c *client.Client, contents []string) {
 
 func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
 	if c.MuteState()&client.MutedMusic != 0 {
+		c.Room().LogEvent(room.EventFail, "%s tried to play song '%s', but was muted.", c.LongString(), contents[0])
 		srv.sendServerMessage(c, "You are muted from playing music.")
 		return
 	}
 	if (c.Room().LockState() == room.LockSpec) && !c.Room().IsInvited(c.UID()) {
+		c.Room().LogEvent(room.EventFail, "%s tried to play song '%s', but was not invited.", c.LongString(), contents[0])
 		srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
 		return
 	}
@@ -526,9 +580,9 @@ func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
 	c.Room().SetSong(song)
 	srv.writeToRoomAO(c.Room(), "MC", song, contents[1], showname, "1", "0", effects)
 	if song == packets.SongStop {
-		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) stopped the music.", showname, c.CID(), c.UID())
+		c.Room().LogEvent(room.EventMusic, "%s stopped the music.", c.LongString())
 	} else {
-		c.Room().LogEvent(room.EventMusic, "%v (CID: %v, UID: %v) played %v.", showname, c.CID(), c.UID(), song)
+		c.Room().LogEvent(room.EventMusic, "%s played %s.", c.LongString(), song)
 	}
 	return
 }
@@ -536,18 +590,20 @@ func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
 func (srv *SCServer) handleArea(c *client.Client, contents []string) {
 	dst := srv.getRoomByName(contents[0])
 	if dst == nil {
-		srv.logger.Debugf("Client (UID: %v, IPID: %v) tried joining non-existant room (%v).", c.UID(), c.IPID(), contents[0])
+		srv.logger.Debugf("%v tried joining non-existant room (%v).", c.LongString(), contents[0])
 		return
 	}
 	srv.moveClient(c, dst)
 }
 
 func (srv *SCServer) handleModCall(c *client.Client, contents []string) {
-    msg := fmt.Sprintf("Mod called in %v (Room ID: %v).\nReason: %v", c.Room().Name(), c.Room().ID(), contents[0])
+	c.Room().LogEvent(room.EventMod, "Mod called by %s. Reason: %s", c.LongString(), contents[0])
+	msg := fmt.Sprintf("Mod called in [%v] %s by %s. \nReason: %s",
+		c.Room().ID(), c.Room().Name(), c.LongString(), contents[0])
+	srv.logger.Infof(msg)
 	for c := range srv.clients.ClientsJoined() {
-		if c.Perms()&perms.ModCall != 0 {
-            // TODO: add who called mod?
-            c.ModCall(msg)
+		if c.Perms()&perms.HearModCalls != 0 {
+			c.ModCall(msg)
 		}
 	}
 }

@@ -75,7 +75,8 @@ force_immediate = false
 # Available methods are:
 #    * "terminal" - will log to standard output (i.e. terminal).
 #    * "file"     - will log to the file "log/room/room_name.log" in relation to the server executable.
-#                 The room name will be formatted in lower case and spaces will turn into underlines.
+#                 Beware: For the log file, the room name will be formatted in lower case and spaces will turn into underlines.
+#                 Make sure no log file names collide, or different rooms may log to the same file.
 # Default value: ["file"].
 log_methods = ["terminal", "file"]
 

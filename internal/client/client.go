@@ -11,10 +11,10 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/internal/perms"
 	"github.com/lambdcalculus/scs/internal/room"
 	"github.com/lambdcalculus/scs/internal/uid"
+	"github.com/lambdcalculus/scs/pkg/logger"
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
@@ -52,20 +52,22 @@ type Client struct {
 	clientType ClientType
 
 	// identification data
-	ident string
-	ipid  string
-	uid   int
-	cid   int
-	perms perms.Mask
+	ident    string // the famed "HDID"
+	ipid     string
+	uid      int
+	cid      int
+	charname string // character name, i.e. the files the client is using
+	perms    perms.Mask
 
 	// state data
-	showname string
-	username string // OOC name
-	room     *room.Room
-	side     string
-	mute     MuteState
-	autopass bool // TODO: implement
-	lastMsg  string
+	showname   string
+	username   string // OOC name
+	charPicked bool   // a client is technically joined before picking a character, but to announce its entrance properly we need an extra variable. ugh.
+	room       *room.Room
+	side       string
+	mute       MuteState
+	autopass   bool // TODO: implement
+	lastMsg    string
 
 	// pair data
 	pair PairData
@@ -226,15 +228,24 @@ func (c *Client) SendOOCMessage(name string, msg string, server bool) {
 
 // Attempts a character change to the passed CID.
 func (c *Client) ChangeChar(cid int) {
-	if !c.room.ChangeChar(c.uid, cid) {
+	if !c.Room().ChangeChar(c.uid, cid) {
+		c.Room().LogEvent(room.EventFail, "%s failed to change characters to %s (%v).", c.LongString(),
+			c.Room().GetNameByCID(cid), cid)
 		return
 	}
 	if cid == c.CID() {
 		return
 	}
 
+    charname := c.Room().GetNameByCID(cid)
+    if !c.charPicked {
+        c.Room().LogEvent(room.EventCharacter, "%s picked %s (%v).", c.LongString(), charname, cid)
+    } else {
+        c.Room().LogEvent(room.EventCharacter, "%s changed to %s (%v).", c.LongString(), charname, cid)
+    }
+
 	c.SetCID(cid)
-    c.SetShowname(c.Room().GetNameByCID(cid))
+	c.SetCharname(c.Room().GetNameByCID(c.CID()))
 	switch c.clientType {
 	case AOClient:
 		c.WriteAO("PV", "OBSOLETE", "CID", strconv.Itoa(cid))
@@ -321,22 +332,22 @@ func (c *Client) NotifyKick(reason string) {
 
 // Adds the guard button on the client (AO-only?).
 func (c *Client) AddGuard() {
-    switch c.clientType {
-    case AOClient:
-        c.WriteAO("AUTH", "1")
-    case SCClient:
-        // no-op?
-    }
+	switch c.clientType {
+	case AOClient:
+		c.WriteAO("AUTH", "1")
+	case SCClient:
+		// no-op?
+	}
 }
 
 // Sends the client a mod call packet.
 func (c *Client) ModCall(msg string) {
-    switch c.clientType {
-    case AOClient:
-        c.WriteAO("ZZ", msg)
-    case SCClient:
-        // TODO
-    }
+	switch c.clientType {
+	case AOClient:
+		c.WriteAO("ZZ", msg)
+	case SCClient:
+		// TODO
+	}
 }
 
 // Sends the client the char list of the room it is currently in.
@@ -435,9 +446,49 @@ func (c *Client) Update() {
 	c.UpdateAmbiance()
 }
 
+// Returns a string that helps identify the client. Used in log messages or commands like
+// `/get room`. This one does not show the IPID, use [Client.LongString] for that.
+// The format is: `[{UID}] "{username}" as {charname} ({CID})`.
+// If the username is unset, it won't be shown.
+// If the showname isn't set, charname is used.
+func (c *Client) String() string {
+	var user string
+	if c.Username() != "" {
+		user = fmt.Sprintf("\"%s\" as ", c.Username())
+	}
+	return fmt.Sprintf("[%v] %s%s (%v)", c.UID(), user, c.Charname(), c.CID())
+}
+
+// Like [Client.String], but with the IPID. Should be used where only moderators can see.
+// Format: `[{UID}] "{username}" as "{charname}" ({CID}) IPID: {IPID}`.
+func (c *Client) LongString() string {
+	return c.String() + fmt.Sprintf(" IPID: %v", c.IPID())
+}
+
+// Like [Client.String] but only has UID, charname and username.
+// Format: `[{UID}] {charname} ({username})`.
+func (c *Client) ShortString() string {
+	var user string
+	if c.Username() != "" {
+		user = fmt.Sprintf(" (%s)", c.Username())
+	}
+	return fmt.Sprintf("[%v] %s%s", c.UID(), c.Charname(), user)
+}
+
 // Checks whether a client has joined the server.
 func (c *Client) Joined() bool {
+	// TODO: have a client only be 'joined' when it has picked a character?
 	return c.UID() != uid.Unjoined
+}
+
+// Returns whether a client is iniswapping.
+func (c *Client) Iniswapping() bool {
+	return c.Charname() != c.Room().GetNameByCID(c.CID())
+}
+
+// Returns whether the client satisfies the passed permission mask.
+func (c *Client) HasPerms(p perms.Mask) bool {
+	return c.Perms()&p == p
 }
 
 func (c *Client) Addr() string {
@@ -487,6 +538,18 @@ func (c *Client) SetCID(cid int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.cid = cid
+}
+
+func (c *Client) Charname() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.charname
+}
+
+func (c *Client) SetCharname(char string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.charname = char
 }
 
 func (c *Client) Perms() perms.Mask {
@@ -547,6 +610,18 @@ func (c *Client) SetUsername(name string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.username = name
+}
+
+func (c *Client) CharPicked() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.charPicked
+}
+
+func (c *Client) SetCharPicked(b bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.charPicked = b
 }
 
 func (c *Client) Side() string {

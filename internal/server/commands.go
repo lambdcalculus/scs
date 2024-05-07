@@ -7,6 +7,7 @@ import (
 
 	"github.com/lambdcalculus/scs/internal/client"
 	"github.com/lambdcalculus/scs/internal/perms"
+	"github.com/lambdcalculus/scs/internal/room"
 )
 
 // A cmdFunc attempts to execute a command with the passed args. It returns whether
@@ -34,11 +35,11 @@ func init() {
 			"Attempts to authenticate with the passed username and password."},
 		"kick": {(*SCServer).cmdKick, 2, perms.Kick,
 			"/kick <cid|uid|ipid> [id] [reason: optional]",
-			"Kicks an user by CID, UID or IPID with an optional reason.\n" +
-				"Example usage: /kick uid 1 \"dumb and stupid\""},
+			"Kicks an user by CID, UID or IPID with an optional reason. Note that kicking by IPID kicks all instances of that IPID - to kick a specific client, kick by UID or CID.\n" +
+				"Example usage: /kick uid 1 dumb and stupid\""},
 		"get": {(*SCServer).cmdGet, 1, perms.None,
 			"/get <room|rooms|allrooms>",
-            "Gets a list of users in a room or set of rooms. Use:\n" +
+			"Gets a list of users in a room or set of rooms. Use:\n" +
 				"\"/get room\" to get a list of users in the same room as you;\n" +
 				"\"/get rooms\" to get a list of users in the rooms that you can see;\n" +
 				"\"/get allrooms\" to get a list of all users in the server."},
@@ -49,16 +50,23 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 	cmd, ok := cmdMap[name]
 	if !ok {
 		srv.sendServerMessage(c, fmt.Sprintf("'/%v' is an unknown command. Use /help to see a list of commands.", name))
+		c.Room().LogEvent(room.EventFail, "%s tried running unknown command '/%s' with arguments %#v",
+			c.LongString(), name, args)
 		return
 	}
 	if len(args) < cmd.minArgs {
 		srv.sendServerMessage(c, fmt.Sprintf("Not enough arguments for /%v.\n Usage of /%v: %v", name, name, cmd.usage))
+		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s' with too few arguments %#v.",
+			c.LongString(), name, args)
 		return
 	}
-	if c.Perms()&cmd.reqPerms != cmd.reqPerms {
+	if !c.HasPerms(cmd.reqPerms) {
 		srv.sendServerMessage(c, fmt.Sprintf("You do not have the required permisions to use /%v.", name))
+		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s' with arguments %#v but did not have permission.",
+			c.LongString(), name, args)
 		return
 	}
+	c.Room().LogEvent(room.EventCommand, "%s ran command '/%s' with arguments %#v.", c.LongString(), name, args)
 	msg, usage := cmd.cmdFunc(srv, c, args)
 	var reply string
 	if msg != "" {
@@ -103,7 +111,7 @@ func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool) {
 	for _, r := range srv.roles {
 		if r.Name == role {
 			c.SetPerms(r.Perms)
-			if r.Perms&perms.ModCall != 0 {
+			if r.Perms&perms.HearModCalls != 0 {
 				c.AddGuard()
 			}
 			// TODO: say permissions?
@@ -127,7 +135,9 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 		if toKick == nil {
 			return fmt.Sprintf("No client with IPID '%v'.", ipid), false
 		}
-		srv.kickClient(toKick, reason)
+		for _, cl := range toKick {
+			srv.kickClient(cl, reason)
+		}
 		return fmt.Sprintf("Successfully kicked client with IPID %v.", ipid), false
 
 	case "cid":
@@ -165,14 +175,14 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 	switch args[0] {
 	// TODO: permissions and stuff
 	case "room":
-		var msg string
-		msg += fmt.Sprintf("%v (Room ID: %v):\n", c.Room().Name(), c.Room().ID())
+		msg := fmt.Sprintf("\n>>> [%v] %v: <<<", c.Room().ID(), c.Room().Name())
 		for _, cl := range srv.getClientsInRoom(c.Room()) {
-			var username string
-			if cl.Username() != "" {
-				username = fmt.Sprintf("(%s) ", cl.Username())
+			msg += "\n"
+			if c.HasPerms(perms.SeeIPIDs) {
+				msg += cl.LongString()
+			} else {
+				msg += cl.String()
 			}
-			msg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
 		}
 		return msg, false
 
@@ -180,15 +190,16 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 		var msg string
 		for _, r := range c.Room().Visible() {
 			var submsg string
-            submsg += fmt.Sprintf("%v (Room ID: %v):\n", r.Name(), r.ID())
+			submsg += fmt.Sprintf("\n>>> [%v] %v: <<<", r.ID(), r.Name())
 			for _, cl := range srv.getClientsInRoom(r) {
-				var username string
-				if cl.Username() != "" {
-					username = fmt.Sprintf("(%s) ", cl.Username())
+				submsg += "\n"
+				if c.HasPerms(perms.SeeIPIDs) {
+					submsg += cl.LongString()
+				} else {
+					submsg += cl.String()
 				}
-				submsg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
 			}
-			msg += submsg + "\n"
+			msg += submsg
 		}
 		return msg, false
 
@@ -196,15 +207,16 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 		var msg string
 		for _, r := range srv.rooms {
 			var submsg string
-            submsg += fmt.Sprintf("%v (Room ID: %v):\n", r.Name(), r.ID())
+			submsg += fmt.Sprintf("\n>>> [%v] %v: <<<", r.ID(), r.Name())
 			for _, cl := range srv.getClientsInRoom(r) {
-				var username string
-				if cl.Username() != "" {
-					username = fmt.Sprintf("(%s) ", cl.Username())
+				submsg += "\n"
+				if c.HasPerms(perms.SeeIPIDs) {
+					submsg += cl.LongString()
+				} else {
+					submsg += cl.String()
 				}
-				submsg += fmt.Sprintf("* %s %s(CID: %v, UID: %v)\n", cl.Showname(), username, cl.CID(), cl.UID())
 			}
-			msg += submsg + "\n"
+			msg += submsg
 		}
 		return msg, false
 	default:

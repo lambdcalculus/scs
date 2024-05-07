@@ -15,8 +15,10 @@ const (
 
 	// Moderator stuff.
 
+	// Permission to see IPIDs.
+	SeeIPIDs Mask = 1 << iota
 	// Permission to hear mod calls.
-	ModCall Mask = 1 << iota
+	HearModCalls
 	// Permission to mute users.
 	Mute
 	// Permission to kick users.
@@ -53,7 +55,8 @@ func (r *Role) Check(p Mask) bool {
 }
 
 var stringToPerm = map[string]Mask{
-	"mod_call":     ModCall,
+	"hear_modcall": HearModCalls,
+	"see_ipids":    SeeIPIDs,
 	"mute":         Mute,
 	"kick":         Kick,
 	"ban":          Ban,

@@ -2,6 +2,7 @@ package room
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/lambdcalculus/scs/internal/config"
@@ -88,9 +89,28 @@ func roomFormatter(id int, name string) logger.FormatFunc {
 			msg = msg[:len(msg)-2]
 		}
 
+        logMsg := fmt.Sprintf("[%v] %s | %s : %v\n", id, name, logTime, msg)
 		if lvl >= logger.LevelError {
-			return fmt.Sprintf("[ERROR]\t[(Room %v) %v]\t[%v]: %v\n", id, name, logTime, msg)
+			return "[ERROR] " + logMsg
 		}
-		return fmt.Sprintf("[%v] (Room %v) %v : %v\n", name, id, logTime, msg)
+        return logMsg
 	}
+}
+
+var allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789_-.()"
+
+// Formats a string into a filename-friendly string, and also removes spaces.
+func slugify(s string) string {
+    s = strings.ToLower(s)
+    s = strings.ReplaceAll(s, " ", "_")
+    var out string
+    for _, c := range s {
+        for _, allowed := range allowedChars {
+            if c == allowed {
+                out += string(c)
+                break
+            }
+        }
+    }
+    return out
 }

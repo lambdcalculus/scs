@@ -5,7 +5,6 @@ package room
 
 import (
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/lambdcalculus/scs/internal/config"
@@ -123,8 +122,10 @@ const (
 	EventCharacter
 	EventMusic
 	EventOOC
+	EventCommand
 	EventIC
 	EventJudge
+	EventMod
 	EventDebug
 	EventFail
 )
@@ -136,8 +137,10 @@ var eventToString = map[Event]string{
 	EventCharacter: "CHAR ",
 	EventMusic:     "MUSIC",
 	EventOOC:       "OOC  ",
+	EventCommand:   "CMD  ",
 	EventIC:        "IC   ",
 	EventJudge:     "JUD  ",
+	EventMod:       "MOD  ",
 	EventDebug:     "DEBUG",
 	EventFail:      "FAIL ",
 }
@@ -176,8 +179,8 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			case "terminal":
 				logOuts = append(logOuts, "stdout")
 			case "file":
-				logOuts = append(logOuts,
-					fmt.Sprintf("log/room/%v.log", strings.ReplaceAll(strings.ToLower(conf.Name), " ", "_")))
+				// TODO: check for log file name collision?
+				logOuts = append(logOuts, fmt.Sprintf("log/room/%v.log", slugify(conf.Name)))
 			}
 		}
 
@@ -242,12 +245,12 @@ func (r *Room) Enter(cid int, uid int) (ok bool) {
 		goto enter
 	}
 	if cid >= len(r.chars) || cid < 0 {
-		r.LogEventDebug(EventFail, "UID %v tried joining with illegal CID (%v).", uid, cid)
+		r.LogEvent(EventFail, "UID %v tried joining with illegal CID (%v).", uid, cid)
 		r.mu.Unlock()
 		return false
 	} else if r.chars[cid].taken {
 		r.mu.Unlock() // Unlock so we can use GetNameByCID
-		r.LogEventDebug(EventFail, "UID %v tried joining as %v (CID: %v), but this character is taken.",
+		r.LogEvent(EventFail, "UID %v tried joining as %v (CID: %v), but this character is taken.",
 			uid, r.GetNameByCID(cid), cid)
 		return false
 	}
@@ -256,7 +259,6 @@ func (r *Room) Enter(cid int, uid int) (ok bool) {
 enter:
 	r.users = append(r.users, &user{charID: cid, userID: uid})
 	r.mu.Unlock()
-	r.LogEvent(EventEnter, "%v (CID: %v, UID: %v) entered.", r.GetNameByCID(cid), cid, uid)
 	return true
 }
 
@@ -272,9 +274,6 @@ func (r *Room) Leave(uid int) {
 		// shouldn't need an out-of-bounds check
 		r.chars[u.charID].taken = false
 	}
-	r.mu.Unlock() // Unlock so we can get char name.
-	r.LogEvent(EventExit, "%v (CID: %v, UID: %v) left.", r.GetNameByCID(u.charID), u.charID, u.userID)
-	r.mu.Lock()
 	r.removeUser(u.userID)
 	r.mu.Unlock()
 }
@@ -326,12 +325,12 @@ func (r *Room) ChangeChar(uid int, to int) (ok bool) {
 
 	if to < 0 || to >= len(r.chars) {
 		r.mu.Unlock()
-		r.LogEventDebug(EventFail, "%v (CID: %v, UID: %v) tried changing to illegal CID (%v).",
+		r.LogEvent(EventFail, "%v (CID: %v, UID: %v) tried changing to illegal CID (%v).",
 			r.GetNameByCID(from), from, uid, to)
 		return false
 	} else if r.chars[to].taken {
 		r.mu.Unlock()
-		r.LogEventDebug(EventFail, "%v (CID: %v, UID: %v) tried changing to %v (CID %v), but this character is taken.",
+		r.LogEvent(EventFail, "%v (CID: %v, UID: %v) tried changing to %v (CID %v), but this character is taken.",
 			r.GetNameByCID(from), from, uid, r.GetNameByCID(to), to)
 		return false
 	}
@@ -343,8 +342,6 @@ change:
 		r.chars[from].taken = false
 	}
 	r.mu.Unlock()
-	r.LogEvent(EventCharacter, "%v (CID: %v, UID: %v) changed to %v (CID: %v).",
-		r.GetNameByCID(from), from, uid, r.GetNameByCID(to), to)
 	return true
 }
 
