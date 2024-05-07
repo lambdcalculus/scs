@@ -15,9 +15,7 @@ import (
 	"sync"
 	"time"
 
-	// TODO: consider changing to cgo-based drivers.
-	_ "github.com/ncruces/go-sqlite3/driver"
-	_ "github.com/ncruces/go-sqlite3/embed"
+    _ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 
     // TODO: separate logging?

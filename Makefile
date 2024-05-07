@@ -6,6 +6,10 @@ CONFIGS := $(shell find . -wholename 'config_sample/*.toml')
 
 server: $(SOURCES)
 	mkdir -p bin
+	go build -tags "libsqlite3" -o $(SERVER_BINARY) ./cmd/scs
+
+server-static: $(SOURCES)
+	mkdir -p bin
 	go build -o $(SERVER_BINARY) ./cmd/scs
 
 serverctl: cmd/serverctl/main.go 

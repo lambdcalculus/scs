@@ -5,8 +5,13 @@ on: [push, pull_request]
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        sqlite: [static, shared]
+        exclude:
+          - os: windows-latest
+            sqlite: shared
       
     runs-on: ${{ matrix.os }}
     steps:
@@ -18,12 +23,30 @@ jobs:
         go-version: '1.22'
 
     - name: Build server
+      env:
+        SUFFIX: ${{ matrix.sqlite == 'static' && '-static' || ''}}
       shell: bash
-      run: make server
+      run: CGO_ENABLED=1 make server$SUFFIX
 
     - name: Build serverctl
+      if: matrix.os != 'windows-latest'
       shell: bash
-      run: make serverctl
+      run: CGO_ENABLED=1 make serverctl
+
+    - name: Copy sqlite dylib (Mac Shared)
+      shell: bash
+      if: matrix.os == 'macos-latest' && matrix.sqlite == 'shared'
+      run: cp /opt/homebrew/opt/sqlite/lib/libsqlite3.0.dylib bin
+
+    - name: Copy sample config
+      shell: bash
+      run: make config
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@master
+      with:
+        name: scs-${{ matrix.os }}-${{ matrix.sqlite }}
+        path: ${{ github.workspace }}/bin/
 
     # TODO: testing
     # - name: Test
