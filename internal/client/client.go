@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/lambdcalculus/scs/internal/perms"
@@ -38,6 +39,7 @@ const (
 	MutedMusic
 	MutedJudge
 	// TODO: add gimp/parrot
+	MutedAll MuteState = 0b1111
 )
 
 // Represents a client's connection and attributes.
@@ -69,6 +71,10 @@ type Client struct {
 	autopass   bool // TODO: implement
 	lastMsg    string
 
+	// for the updateMutes routine
+	mutes     []mute
+	mutesStop chan struct{}
+
 	// pair data
 	pair PairData
 
@@ -94,36 +100,44 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 		ipid:       ipid,
 		uid:        uid.Unjoined,
 		cid:        room.SpectatorCID,
+		mutesStop:  make(chan struct{}),
 		pair:       PairData{WantedCID: -1},
 		logger:     log,
 	}
 
-    // The default maximum token size is 64KiB.
-    // Way bigger than we need, but nobody's gonna crash the server if they send something that long, lol.
+	// The default maximum token size is 64KiB.
+	// Way bigger than we need, but nobody's gonna crash the server if they send something that long, lol.
 	scanner := bufio.NewScanner(conn)
 	split := splitAt('%')
 	scanner.Split(split)
 	client.tcpScanner = scanner
+
+	client.updateMutes(client.mutesStop)
 
 	return client
 }
 
 // Makes a new client over a WebSocket connection. The client will log to the specified logger.
 func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
-    // Read limit is 64KiB, just because that's the default used by the scanner on the TCP side.
-    // Can be changed later, if necessary.
-    conn.SetReadLimit(64 << 10)
+	// Read limit is 64KiB, just because that's the default used by the scanner on the TCP side.
+	// Can be changed later, if necessary.
+	conn.SetReadLimit(64 << 10)
 
 	ipid := hashIP(conn.RemoteAddr())
-	return &Client{
-		wsConn: conn,
-		addr:   conn.RemoteAddr().String(),
-		ipid:   ipid,
-		uid:    uid.Unjoined,
-		cid:    room.SpectatorCID,
-		pair:   PairData{WantedCID: -1},
-		logger: log,
+	client := &Client{
+		wsConn:    conn,
+		addr:      conn.RemoteAddr().String(),
+		ipid:      ipid,
+		uid:       uid.Unjoined,
+		cid:       room.SpectatorCID,
+		mutesStop: make(chan struct{}),
+		pair:      PairData{WantedCID: room.SpectatorCID},
+		logger:    log,
 	}
+
+	client.updateMutes(client.mutesStop)
+
+	return client
 }
 
 // Returns whether the client is connected via WebSocket.
@@ -204,6 +218,7 @@ func (c *Client) WriteSCPacket(pkt packets.PacketSC) {
 
 // Disconnects the client.
 func (c *Client) Disconnect() {
+	c.mutesStop <- struct{}{}
 	if c.tcpConn != nil {
 		c.logger.Debugf("%v (IPID: %v) disconnected (TCP).", c.addr, c.ipid)
 		c.tcpConn.Close()
@@ -243,12 +258,12 @@ func (c *Client) ChangeChar(cid int) {
 		return
 	}
 
-    charname := c.Room().GetNameByCID(cid)
-    if !c.charPicked {
-        c.Room().LogEvent(room.EventCharacter, "%s picked %s (%v).", c.LongString(), charname, cid)
-    } else {
-        c.Room().LogEvent(room.EventCharacter, "%s changed to %s (%v).", c.LongString(), charname, cid)
-    }
+	charname := c.Room().GetNameByCID(cid)
+	if !c.charPicked {
+		c.Room().LogEvent(room.EventCharacter, "%s picked %s (%v).", c.LongString(), charname, cid)
+	} else {
+		c.Room().LogEvent(room.EventCharacter, "%s changed to %s (%v).", c.LongString(), charname, cid)
+	}
 
 	c.SetCID(cid)
 	c.SetCharname(c.Room().GetNameByCID(c.CID()))
@@ -325,12 +340,23 @@ func (c *Client) SendRoomUpdateAO(up packets.AreaUpdate) {
 	}
 }
 
-// Notifies a client that it has been kicked, along with the reason.
+// Notifies a client that it has been kicked, along with a reason.
 // (Does NOT disconnect the client, use removeClient after.)
 func (c *Client) NotifyKick(reason string) {
 	switch c.clientType {
 	case AOClient:
 		c.WriteAO("KK", reason)
+	case SCClient:
+		// TODO
+	}
+}
+
+// Notifies a client that it has been banned, along with reason.
+// (Does NOT disconnect the client, use removeClient after.)
+func (c *Client) NotifyBan(reason string) {
+	switch c.clientType {
+	case AOClient:
+		c.WriteAO("BD", reason)
 	case SCClient:
 		// TODO
 	}
@@ -409,13 +435,13 @@ func (c *Client) UpdateSides() {
 
 // Updates the prosecution/def bars.
 func (c *Client) UpdateBars() {
-    switch c.Type() {
-    case AOClient:
-        c.WriteAO("HP", "1", strconv.Itoa(int(c.Room().Bar(packets.BarDef))))
-        c.WriteAO("HP", "2", strconv.Itoa(int(c.Room().Bar(packets.BarPro))))
-    case SCClient:
-        // TODO
-    }
+	switch c.Type() {
+	case AOClient:
+		c.WriteAO("HP", "1", strconv.Itoa(int(c.Room().Bar(packets.BarDef))))
+		c.WriteAO("HP", "2", strconv.Itoa(int(c.Room().Bar(packets.BarPro))))
+	case SCClient:
+		// TODO
+	}
 }
 
 // Updates the music according to the current room.
@@ -459,7 +485,7 @@ func (c *Client) Update() {
 	c.UpdateCharList()
 	c.UpdateBackground()
 	c.UpdateSides()
-    c.UpdateBars()
+	c.UpdateBars()
 	c.UpdateSong()
 	c.UpdateAmbiance()
 }
@@ -666,16 +692,21 @@ func (c *Client) SetMute(m MuteState) {
 	c.mute = m
 }
 
-func (c *Client) AddMute(m MuteState) {
+// Adds a mute to the client, scheduled to end after `dur`.
+func (c *Client) AddMute(m MuteState, dur time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.mute |= m
+	c.mutes = append(c.mutes, mute{m: m, until: time.Now().Add(dur)})
 }
 
+// Removes all mutes that match `m`. Internally, this is done by removing
+// the bits that match `m` from each of the client's current mutes.
 func (c *Client) RemoveMute(m MuteState) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.mute &= ^m
+	for i := range c.mutes {
+		c.mutes[i].m &= ^m
+	}
 }
 
 func (c *Client) LastMsg() string {
