@@ -15,10 +15,9 @@ import (
 	"sync"
 	"time"
 
-    _ "github.com/mattn/go-sqlite3"
+	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
-
-    // TODO: separate logging?
+	// TODO: separate logging?
 )
 
 // The version of the database, used for migrations.
@@ -29,6 +28,27 @@ const version int = 0
 type Database struct {
 	db *sql.DB
 	mu sync.Mutex
+}
+
+// Represents a mute in the database.
+type Mute struct {
+	MuteID    int
+	IPID      string
+	HDID      string
+	Reason    string
+	Moderator string
+	Start     time.Time
+	Duration  time.Duration
+}
+
+// Represents a ban in the database.
+type Kick struct {
+	KickID    int
+	IPID      string
+	HDID      string
+	Reason    string
+	Moderator string
+	Time      time.Time
 }
 
 // Represents a ban in the database.
@@ -42,11 +62,18 @@ type Ban struct {
 	End       time.Time
 }
 
+// Represents an audit record (i.e. all mutes, kicks, bans done at an user).
+type Record struct {
+	Mutes []Mute
+	Kicks []Kick
+	Bans  []Ban
+}
+
 // Opens a connection to the database, creating it and initializing the tables if necessary.
 func Init(path string) (*Database, error) {
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
-		return nil, fmt.Errorf("db: Couldn't connect to database (%w).", err)
+		return nil, fmt.Errorf("db: Couldn't connect to database (%w)", err)
 	}
 
 	// TODO: users table?
@@ -58,7 +85,36 @@ func Init(path string) (*Database, error) {
         role     TEXT NOT NULL
     )`)
 	if err != nil {
-		return nil, fmt.Errorf("db: Couldn't create auth table (%w).", err)
+		return nil, fmt.Errorf("db: Couldn't create auth table (%w)", err)
+	}
+
+	// Kicks and mutes are always done against online users, so they should always have
+	// a corresponding IPID and HDID, unlike bans. Bans only require one of the two to not be NULL.
+	_, err = db.Exec(`
+    CREATE TABLE IF NOT EXISTS mutes(
+        mute_id   INTEGER PRIMARY KEY,
+        ipid      TEXT NOT NULL,
+        hdid      TEXT NOT NULL,
+        reason    TEXT NOT NULL,
+        moderator TEXT NOT NULL,
+        time      INTEGER NOT NULL,
+        duration  INTEGER NOT NULL
+    )`)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't create mutes table (%w)", err)
+	}
+
+	_, err = db.Exec(`
+    CREATE TABLE IF NOT EXISTS kicks(
+        kick_id   INTEGER PRIMARY KEY,
+        ipid      TEXT NOT NULL,
+        hdid      TEXT NOT NULL,
+        reason    TEXT NOT NULL,
+        moderator TEXT NOT NULL,
+        time      INTEGER NOT NULL
+    )`)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't create kicks table (%w)", err)
 	}
 
 	_, err = db.Exec(`
@@ -74,19 +130,112 @@ func Init(path string) (*Database, error) {
         CHECK (ipid IS NOT NULL OR hdid IS NOT NULL)
     )`)
 	if err != nil {
-		return nil, fmt.Errorf("db: Couldn't create bans table (%w).", err)
+		return nil, fmt.Errorf("db: Couldn't create bans table (%w)", err)
 	}
 
 	return &Database{db: db}, nil
 }
 
-// Adds a new ban to the database.
-func (d *Database) AddBan(ipid string, hdid string, reason string, moderator string, duration time.Duration) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+// Adds a new kick to the database.
+func (d *Database) AddMute(ipid string, hdid string, reason string, moderator string, dur time.Duration) error {
 	// Get time right away.
 	start := time.Now()
-	end := start.Add(duration)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+    INSERT INTO mutes
+        (ipid, hdid, reason, moderator, time, duration)
+    VALUES
+        (?, ?, ?, ?, ?, ?)`,
+		ipid, hdid, reason, moderator, start.Unix(), dur.Abs().Seconds())
+	if err != nil {
+		return fmt.Errorf("db: Couldn't insert mute (%w)", err)
+	}
+
+	return nil
+}
+
+// Gets all the mutes that match to the passed IPID or the passed HDID.
+func (d *Database) GetMutes(ipid string, hdid string) ([]Mute, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query("SELECT DISTINCT * FROM mutes WHERE ipid = ? OR hdid = ?", ipid, hdid)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't query database (%w)", err)
+	}
+	defer rows.Close()
+
+	var mutes []Mute
+	for rows.Next() {
+		var mute Mute
+		var start int64
+		var dur int64
+		if err := rows.Scan(&mute.MuteID, &mute.IPID, &mute.HDID, &mute.Reason, &mute.Moderator, &start, &dur); err != nil {
+			return mutes, fmt.Errorf("db: Error scanning row (%w)", err)
+		}
+		mute.Start = time.Unix(start, 0)
+		mute.Duration = time.Duration(dur * int64(time.Second))
+		mutes = append(mutes, mute)
+	}
+	return mutes, nil
+}
+
+// Adds a new kick to the database.
+func (d *Database) AddKick(ipid string, hdid string, reason string, moderator string) error {
+	// Get time right away.
+	start := time.Now()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	_, err := d.db.Exec(`
+    INSERT INTO kicks
+        (ipid, hdid, reason, moderator, time)
+    VALUES
+        (?, ?, ?, ?, ?)`,
+		ipid, hdid, reason, moderator, start.Unix())
+	if err != nil {
+		return fmt.Errorf("db: Couldn't insert kick (%w)", err)
+	}
+
+	return nil
+}
+
+// Gets all the kicks that match to the passed IPID or the passed HDID.
+func (d *Database) GetKicks(ipid string, hdid string) ([]Kick, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	rows, err := d.db.Query("SELECT DISTINCT * FROM mutes WHERE ipid = ? OR hdid = ?", ipid, hdid)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't query database (%w)", err)
+	}
+	defer rows.Close()
+
+	var mutes []Kick
+	for rows.Next() {
+		var kick Kick
+		var t int64
+		if err := rows.Scan(&kick.KickID, &kick.IPID, &kick.HDID, &kick.Reason, &kick.Moderator, &t); err != nil {
+			return mutes, fmt.Errorf("db: Error scanning row (%w)", err)
+		}
+		kick.Time = time.Unix(t, 0)
+		mutes = append(mutes, kick)
+	}
+	return mutes, nil
+}
+
+// Adds a new ban to the database.
+func (d *Database) AddBan(ipid string, hdid string, reason string, moderator string, dur time.Duration) error {
+	// Get time right away.
+	start := time.Now()
+	end := start.Add(dur)
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	if ipid != "" && hdid != "" {
 		_, err := d.db.Exec(`
@@ -96,7 +245,7 @@ func (d *Database) AddBan(ipid string, hdid string, reason string, moderator str
             (?, ?, ?, ?, ?, ?)`,
 			ipid, hdid, reason, moderator, start.Unix(), end.Unix())
 		if err != nil {
-			return fmt.Errorf("db: Couldn't insert ban (%w).", err)
+			return fmt.Errorf("db: Couldn't insert ban (%w)", err)
 		}
 		return nil
 	}
@@ -113,7 +262,7 @@ func (d *Database) AddBan(ipid string, hdid string, reason string, moderator str
         VALUES
             (NULL, ?, ?, ?, ?, ?)`)
 		if err != nil {
-			return fmt.Errorf("db: Couldn't insert HDID ban (%w).", err)
+			return fmt.Errorf("db: Couldn't insert HDID ban (%w)", err)
 		}
 
 	case hdid == "":
@@ -124,14 +273,15 @@ func (d *Database) AddBan(ipid string, hdid string, reason string, moderator str
         VALUES
             (?, NULL, ?, ?, ?, ?)`)
 		if err != nil {
-			return fmt.Errorf("db: Couldn't insert IPID ban (%w).", err)
+			return fmt.Errorf("db: Couldn't insert IPID ban (%w)", err)
 		}
+
 	default:
 		return fmt.Errorf("db: IPID and HDID cannot both be empty.")
 	}
 
 	if _, err := st.Exec(id, reason, moderator, start.Unix(), end.Unix()); err != nil {
-		return fmt.Errorf("db: Couldn't insert ban (%w).", err)
+		return fmt.Errorf("db: Couldn't insert ban (%w)", err)
 	}
 	return nil
 }
@@ -143,7 +293,7 @@ func (d *Database) GetBans(ipid string, hdid string) ([]Ban, error) {
 
 	rows, err := d.db.Query("SELECT DISTINCT * FROM bans WHERE ipid = ? OR hdid = ?", ipid, hdid)
 	if err != nil {
-		return nil, fmt.Errorf("db: Couldn't query database (%w).", err)
+		return nil, fmt.Errorf("db: Couldn't query database (%w)", err)
 	}
 	defer rows.Close()
 
@@ -155,7 +305,7 @@ func (d *Database) GetBans(ipid string, hdid string) ([]Ban, error) {
 		var start int64
 		var end int64
 		if err := rows.Scan(&ban.BanID, &ipid, &hdid, &ban.Reason, &ban.Moderator, &start, &end); err != nil {
-			return bans, fmt.Errorf("db: Error scanning row (%w).", err)
+			return bans, fmt.Errorf("db: Error scanning row (%w)", err)
 		}
 		ban.IPID = ipid.String
 		ban.HDID = hdid.String
@@ -197,7 +347,7 @@ func (d *Database) NullBan(id int) error {
     WHERE ban_id = ?`,
 		now, id)
 	if err != nil {
-		return fmt.Errorf("db: Couldn't null ban (%w).", err)
+		return fmt.Errorf("db: Couldn't null ban (%w)", err)
 	}
 	return nil
 }
@@ -209,14 +359,31 @@ func (d *Database) NullBans(ipid string, hdid string) error {
 
 	bans, err := d.GetBans(ipid, hdid)
 	if err != nil {
-		return fmt.Errorf("db: Couldn't get bans (%w).", err)
+		return fmt.Errorf("db: Couldn't get bans (%w)", err)
 	}
 	for _, ban := range bans {
 		if err := d.NullBan(ban.BanID); err != nil {
-			return fmt.Errorf("db: Couldn't null ban of ID %v (%w).", ban.BanID, err)
+			return fmt.Errorf("db: Couldn't null ban of ID %v (%w)", ban.BanID, err)
 		}
 	}
 	return nil
+}
+
+// Gets the record (all mutes, kicks and bans) for the passed IPID or HDID.
+func (d *Database) GetRecord(ipid string, hdid string) (Record, error) {
+    mutes, err := d.GetMutes(ipid, hdid)
+    if err != nil {
+        return Record{}, err
+    }
+    kicks, err := d.GetKicks(ipid, hdid)
+    if err != nil {
+        return Record{}, err
+    }
+    bans, err := d.GetBans(ipid, hdid)
+    if err != nil {
+        return Record{}, err
+    }
+    return Record{Mutes: mutes, Kicks: kicks, Bans: bans}, nil
 }
 
 // Adds a new user that can authenticate to the passed role.
@@ -226,7 +393,7 @@ func (d *Database) AddAuth(username string, password string, role string) error 
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return fmt.Errorf("db: Error hashing password (%w).", err)
+		return fmt.Errorf("db: Error hashing password (%w)", err)
 	}
 	_, err = d.db.Exec(`
     INSERT INTO auth
@@ -235,7 +402,7 @@ func (d *Database) AddAuth(username string, password string, role string) error 
         (?, ?, ?)`,
 		username, string(hash), role)
 	if err != nil {
-		return fmt.Errorf("db: Couldn't add user (%w).", err)
+		return fmt.Errorf("db: Couldn't add user (%w)", err)
 	}
 	return nil
 }
