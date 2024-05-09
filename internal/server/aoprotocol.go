@@ -97,10 +97,10 @@ func (srv *SCServer) handleAskCounts(c *client.Client, contents []string) {
 	if banned {
 		var sb strings.Builder
 		for _, ban := range bans {
-			sb.WriteString(fmt.Sprintf("%s. (until: %s)\n", ban.Reason, ban.End.UTC().Format(time.UnixDate)))
+			sb.WriteString(fmt.Sprintf("%s (until: %s)\n", ban.Reason, ban.End.UTC().Format(time.UnixDate)))
 		}
 
-		c.WriteAO("BD", sb.String())
+		c.NotifyBan(sb.String())
 		return
 	}
 

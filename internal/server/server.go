@@ -82,6 +82,7 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 		logger:  log,
 	}
 	srv.logger.Debugf("Successfully loaded server configuration: %#v", conf)
+
 	return srv, nil
 }
 
@@ -126,7 +127,7 @@ func (srv *SCServer) getByIPID(id string) []*client.Client {
 			clients = append(clients, c)
 		}
 	}
-	return nil
+	return clients
 }
 
 // Returns the room with the passed name. If there are none, returns `nil`.
