@@ -499,6 +499,13 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 		srv.sendServerMessage(c, reason)
 		return
 	}
+    for _, u := range srv.config.ReservedUsernames {
+        if strings.ToLower(outName) == strings.ToLower(u) && !c.HasPerms(perms.ReservedNames){
+            reason = fmt.Sprintf("'%s' is a reserved username.", outName)
+            srv.sendServerMessage(c, reason)
+            return
+        }
+    }
 	// TODO: make username check room-based?
 	// this would require making changes to moveClient.
 	for cl := range srv.clients.Clients() {

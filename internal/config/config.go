@@ -26,21 +26,24 @@ type Server struct {
 	MaxNameSize int `toml:"max_name_size"`
 
 	LevelString string `toml:"log_level"`
+
+	ReservedUsernames []string
 }
 
 func ServerDefault() *Server {
 	return &Server{
-		Name:        "Unnamed Server",
-		Username:    "SCS",
-		Desc:        "An unconfigured SpriteChat server.",
-		MaxPlayers:  100,
-		PortWS:      8080,
-		PortTCP:     8081,
-		PortRPC:     8082,
-		AssetURL:    "",
-		MaxMsgSize:  150,
-		MaxNameSize: 20,
-		LevelString: "info",
+		Name:              "Unnamed Server",
+		Username:          "SCS",
+		Desc:              "An unconfigured SpriteChat server.",
+		MaxPlayers:        100,
+		PortWS:            8080,
+		PortTCP:           8081,
+		PortRPC:           8082,
+		AssetURL:          "",
+		MaxMsgSize:        150,
+		MaxNameSize:       20,
+		LevelString:       "info",
+		ReservedUsernames: []string{"administrator", "admin", "moderator", "mod", "serverctl"},
 	}
 }
 
@@ -142,6 +145,7 @@ func ReadServer() (*Server, error) {
 	if _, err := toml.DecodeFile(configDir+"/config.toml", srvConfig); err != nil {
 		return srvConfig, fmt.Errorf("config: Couldn't read server config (%w).", err)
 	}
+	srvConfig.ReservedUsernames = append(srvConfig.ReservedUsernames, srvConfig.Username)
 
 	return srvConfig, nil
 }
