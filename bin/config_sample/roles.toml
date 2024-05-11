@@ -1,13 +1,26 @@
 # Roles define special permissions users can promote themselves to under certain circumstances.
+# There are two ways to get a role: either login as an authorized user, using the /manage command
+# to get the permissions for the defined by `manager_role` in config.toml.
+
 [[role]]
 # The name of the role.
-name = "Room Manager"
+name = "Admin"
 
 # The special permissions of the role.
+# TODO: put a wiki link or something that explains each permission.
 # Default: [].
-# See [TODO: insert some wiki link] for a description of each option.
-permissions = ["status", "lock", "desc", "background", "ambiance"]
+permissions = ["all"]
 
 [[role]]
-name = "Super"
-permissions = ["all"]
+name = "Moderator"
+
+# Permissions can also be set negatively.
+# To do so, start with "all" and add a "^" to permissions you'd like to unset.
+permissions = ["all", "^mod_database", "^unban", "^reserved_names"]
+
+[[role]]
+# In this default configuration, this role is set as the `manager_role` in config.toml.
+name = "Room Manager"
+
+permissions = ["status", "lock", "description", "background", "ambiance"]
+

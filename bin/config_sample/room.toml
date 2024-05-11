@@ -54,6 +54,12 @@ side_list = ["wit", "def", "pro", "jud", "hld", "hlp"]
 # Default value: [].
 adjacent_rooms = ["Lounge", "Hub"]
 
+# Whether to allow /manage in this room.
+# Setting this to true will allow users to promote themselves with /manage to the role set by
+# `manager_role` in config.toml. This is similar to /cm in other servers. Setting this to false will disallow this.
+# Default value: false
+allow_managers = true
+
 # Whether to allow blankposting in this room.
 # Default: true.
 allow_blankpost = true

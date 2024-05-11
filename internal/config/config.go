@@ -10,15 +10,16 @@ import (
 )
 
 type Server struct {
-	Name       string `toml:"name"`
-	Username   string `toml:"server_username"`
-	Desc       string `toml:"description"`
-	MaxPlayers int    `toml:"max_players"`
-	PortWS     int    `toml:"ws_port"`
-	PortTCP    int    `toml:"legacy_port"`
-	PortRPC    int    `toml:"rpc_port"`
-	AllowAO    bool   `toml:"allow_ao"`
-	AssetURL   string `toml:"asset_url"`
+	Name        string `toml:"name"`
+	Username    string `toml:"server_username"`
+	Desc        string `toml:"description"`
+	MaxPlayers  int    `toml:"max_players"`
+	PortWS      int    `toml:"ws_port"`
+	PortTCP     int    `toml:"legacy_port"`
+	PortRPC     int    `toml:"rpc_port"`
+	AllowAO     bool   `toml:"allow_ao"`
+	ManagerRole string `toml:"manager_role"`
+	AssetURL    string `toml:"asset_url"`
 	//TODO: AllowAO bool `toml:"allow_ao"`
 
 	// these seem more appropriate for a different section?
@@ -69,6 +70,7 @@ type Room struct {
 	SongCategories []string `toml:"song_categories"`
 	Sides          []string `toml:"side_list"`
 
+	AllowManagers  bool `toml:"allow_managers"`
 	AllowBlankpost bool `toml:"allow_blankpost"`
 	AllowShouting  bool `toml:"allow_shouting"`
 	AllowIniswap   bool `toml:"allow_iniswap"`
@@ -88,6 +90,7 @@ func RoomDefault() *Room {
 		Sides:           []string{"wit", "def", "pro", "jud", "hld", "hlp"},
 		AdjacentRooms:   []string{},
 		LogMethods:      []string{"file"},
+		AllowManagers:   false,
 		AllowBlankpost:  true,
 		AllowShouting:   true,
 		AllowIniswap:    true,

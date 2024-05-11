@@ -42,3 +42,6 @@ max_name_size = 20
 # Available levels: "trace", "debug", "info", "warn", "error", "fatal".
 # Default level: "info".
 log_level = "info"
+
+# The role users will be promoted to when using /manage.
+manager_role = "Room Manager"
