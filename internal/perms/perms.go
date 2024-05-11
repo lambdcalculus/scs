@@ -15,31 +15,26 @@ const (
 
 	// Moderator stuff.
 
-	// Permission to see IPIDs.
-	SeeIPIDs Mask = 1 << iota
-	// Permission to hear mod calls.
-	HearModCalls
-	// Permission to mute users.
-	Mute
-	// Permission to kick users.
-	Kick
-	// Permission to ban users.
-	Ban
-	// Permission to bypass locks (e.g. room locks, background locks, etc.).
-	BypassLocks
+	SeeIPIDs     Mask = 1 << iota // Permission to see IPIDs.
+	HearModCalls                  // Permission to hear mod calls.
+	Mute                          // Permission to mute users.
+	Kick                          // Permission to kick users.
+	Ban                           // Permission to ban users.
+	Unban                         // Permission to unban users.
+	BypassLocks                   // Permission to bypass locks (e.g. room locks, background locks, etc.).
 
 	// Room stuff.
 
-	// Permission to change the room's status.
-	Status
-	// Permission to change the room's lock.
-	Lock
-	// Permission to change the room's description.
-	Description
-	// Permission to change the room's background (does not bypass background lock).
-	Background
-	// Permission to change the room's ambiance track (does not bypass ambiance lock).
-	Ambiance
+	Status      // Permission to change the room's status.
+	Lock        // Permission to change the room's lock.
+	Description // Permission to change the room's description.
+	Background  // Permission to change the room's background (does not bypass background lock).
+	Ambiance    // Permission to change the room's ambiance track (does not bypass ambiance lock).
+
+	// Admin stuff.
+
+	ModifyDatabase // Permission to use commands that alter the database directly.
+	ReservedNames  // Permission to bypass the server's reserved names.
 
 	All Mask = 0xffffffff
 )
@@ -55,30 +50,49 @@ func (r *Role) Check(p Mask) bool {
 }
 
 var stringToPerm = map[string]Mask{
-	"hear_modcall": HearModCalls,
-	"see_ipids":    SeeIPIDs,
-	"mute":         Mute,
-	"kick":         Kick,
-	"ban":          Ban,
-	"bypass_locks": BypassLocks,
-	"status":       Status,
-	"description":  Description,
-	"background":   Background,
-	"ambiance":     Ambiance,
-	"all":          All,
+	"hear_modcall":   HearModCalls,
+	"see_ipids":      SeeIPIDs,
+	"mute":           Mute,
+	"kick":           Kick,
+	"ban":            Ban,
+	"unban":          Unban,
+	"bypass_locks":   BypassLocks,
+	"status":         Status,
+	"lock":           Lock,
+	"description":    Description,
+	"background":     Background,
+	"ambiance":       Ambiance,
+	"mod_database":   ModifyDatabase,
+	"reserved_names": ReservedNames,
+	"all":            All,
 }
 
-// Makes a list of roles out of the roles configuration.
-func MakeRoles() ([]Role, error) {
+// Makes a list of roles out of a roles configuration.
+func MakeRoles(confs *config.Roles) ([]Role, error) {
 	confs, err := config.ReadRoles()
 	if err != nil {
-		return nil, fmt.Errorf("perms: Couldn't read roles (%w).", err)
+		return nil, fmt.Errorf("perms: Couldn't read roles config (%w)", err)
 	}
 	roles := make([]Role, len(confs.Confs))
 	for i, conf := range confs.Confs {
 		perms := None
 		for _, s := range conf.Permissions {
-			perms |= stringToPerm[s]
+			if len(s) == 0 {
+				return nil, fmt.Errorf("perms: Empty permission string in role %s", conf.Name)
+			}
+			if s[0] == '^' {
+				perm, ok := stringToPerm[s[1:]]
+				if !ok {
+					return nil, fmt.Errorf("perms: Unknown permission: %s", s[1:])
+				}
+				perms &= ^perm
+				continue
+			}
+			perm, ok := stringToPerm[s]
+			if !ok {
+				return nil, fmt.Errorf("perms: Unknown permission: %s", s)
+			}
+			perms |= perm
 		}
 		roles[i] = Role{
 			Name:  conf.Name,

@@ -59,7 +59,7 @@ type Client struct {
 	uid      int
 	cid      int
 	charname string // character name, i.e. the files the client is using
-	perms    perms.Mask
+	roles    []perms.Role
 
 	// state data
 	showname   string
@@ -530,6 +530,17 @@ func (c *Client) Iniswapping() bool {
 	return c.Charname() != c.Room().GetNameByCID(c.CID())
 }
 
+// Returns the client's permissions, based on its roles.
+func (c *Client) Perms() perms.Mask {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	perms := perms.None
+	for _, r := range c.roles {
+		perms |= r.Perms
+	}
+	return perms
+}
+
 // Returns whether the client satisfies the passed permission mask.
 func (c *Client) HasPerms(p perms.Mask) bool {
 	return c.Perms()&p == p
@@ -596,16 +607,49 @@ func (c *Client) SetCharname(char string) {
 	c.charname = char
 }
 
-func (c *Client) Perms() perms.Mask {
+// Returns a copy of the client's roles.
+func (c *Client) Roles() []perms.Role {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.perms
+	cpy := make([]perms.Role, len(c.roles))
+	copy(cpy, c.roles)
+	return cpy
 }
 
-func (c *Client) SetPerms(p perms.Mask) {
+// Adds a role to the client.
+func (c *Client) AddRole(role perms.Role) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.perms = p
+	c.roles = append(c.roles, role)
+}
+
+// Checks if the client has the specified role.
+func (c *Client) CheckRole(role perms.Role) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, r := range c.roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// Removes a role from the client, if it has it.
+// If the client didn't have the role, it returns false.
+func (c *Client) RemoveRole(role perms.Role) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	found := false
+	// We don't return early, in case multiple copies of the role are here.
+	for i, r := range c.roles {
+		if r == role {
+			found = true
+			c.roles = append(c.roles[:i], c.roles[i+1:]...)
+		}
+	}
+	return found
 }
 
 func (c *Client) Room() *room.Room {
