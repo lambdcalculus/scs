@@ -22,8 +22,9 @@ type SCServer struct {
 	config *config.Server
 	db     *db.Database
 
-	roles []perms.Role
-	rooms []*room.Room
+	roles   []perms.Role
+	rooms   []*room.Room
+	mgrRole perms.Role // role used for /manage
 
 	uidHeap uid.UIDHeap
 	clients *client.List
@@ -52,12 +53,21 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 	}
 	log.Debugf("Music config: %#v", musicConf)
 
-	rooms, err := room.MakeRooms(charsConf, musicConf)
+	roomsConf, err := config.ReadRooms()
+	if err != nil {
+		return nil, fmt.Errorf("server: Couldn't read rooms config (%w).", err)
+	}
+	rooms, err := room.MakeRooms(roomsConf, charsConf, musicConf)
 	if err != nil {
 		return nil, fmt.Errorf("server: Couldn't configure rooms (%w).", err)
 	}
 
-	roles, err := perms.MakeRoles()
+	rolesConf, err := config.ReadRoles()
+	if err != nil {
+		return nil, fmt.Errorf("server: Couldn't read roles config (%w)", err)
+	}
+	log.Debugf("Roles config: %#v", rolesConf)
+	roles, err := perms.MakeRoles(rolesConf)
 	if err != nil {
 		return nil, fmt.Errorf("server: Couldn't configure roles (%w).", err)
 	}
@@ -71,11 +81,26 @@ func MakeServer(log *logger.Logger) (*SCServer, error) {
 		return nil, fmt.Errorf("server: Couldn't initialize database (%w).", err)
 	}
 
+	// Find manager role.
+	var mgrRole perms.Role
+	found := false
+	for _, r := range roles {
+		if r.Name == conf.ManagerRole {
+			found = true
+			mgrRole = r
+			break
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("server: Manager role '%s' not in roles list.", conf.ManagerRole)
+	}
+
 	srv := &SCServer{
 		config:  conf,
 		db:      db,
 		roles:   roles,
 		rooms:   rooms,
+		mgrRole: mgrRole,
 		uidHeap: *uid.CreateHeap(conf.MaxPlayers),
 		clients: client.NewList(),
 		fatal:   make(chan error),
@@ -171,6 +196,7 @@ func (srv *SCServer) sendOOCMessageToRoom(r *room.Room, username string, msg str
 
 // Sends a server message to all clients in the specified room.
 func (srv *SCServer) sendServerMessageToRoom(r *room.Room, format string, a ...any) {
+	r.LogEvent(room.EventServerMsg, fmt.Sprintf("%s: %s", srv.config.Username, fmt.Sprintf(format, a...)))
 	srv.sendOOCMessageToRoom(r, srv.config.Username, fmt.Sprintf(format, a...), true)
 }
 
@@ -182,13 +208,11 @@ func (srv *SCServer) kickClient(c *client.Client, reason string) {
 // Disconnects and cleans up a client.
 func (srv *SCServer) removeClient(c *client.Client) {
 	if c.Room() != nil {
+		srv.moveClient(c, nil)
 		// Don't send disconnect message if someone only got to the character list.
 		if c.CharPicked() {
 			srv.sendServerMessageToRoom(c.Room(), fmt.Sprintf("%s has disconnected.", c.ShortString()))
 		}
-		c.Room().LogEvent(room.EventExit, "%s disconnected.", c.LongString())
-		c.Room().Leave(c.UID())
-		c.SetRoom(nil)
 	}
 	if c.UID() != uid.Unjoined {
 		srv.uidHeap.Free(c.UID())
@@ -229,13 +253,30 @@ func (srv *SCServer) sendRoomUpdateAllAO(up packets.AreaUpdate) {
 	}
 }
 
-// Attempts to move a client to room `dst`.
+// Attempts to move a client to room `dst`. `dst` can be `nil`, to be used when disconnecting a client.
 func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 	currRoom := c.Room()
 	if currRoom == dst {
 		srv.sendServerMessage(c, "You are already in this room!")
 		return
 	}
+
+	// remove manager privileges
+	if currRoom.IsManager(c.UID()) {
+		currRoom.RemoveManager(c.UID())
+		c.RemoveRole(srv.mgrRole)
+		srv.sendServerMessageToRoom(currRoom, "%s is no longer managing this room.", c.ShortString())
+	}
+
+	// only used when disconnecting
+	if dst == nil {
+		currRoom.LogEvent(room.EventExit, "%s disconnected.", c.LongString())
+		currRoom.Leave(c.UID())
+		c.SetRoom(nil)
+		return
+	}
+
+	// check invite
 	if (dst.LockState()&room.LockLocked != 0) && !dst.IsInvited(c.UID()) {
 		dst.LogEvent(room.EventFail, "%s tried to enter uninvited.", c.LongString())
 		srv.sendServerMessage(c, "You are not invited to this room!")
@@ -243,6 +284,8 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 	}
 
 	srv.sendServerMessage(c, "Moved to [%v] %s. Description: %s", dst.ID(), dst.Name(), dst.Desc())
+
+	// check character
 	newCID, ok := dst.GetCIDByName(currRoom.GetNameByCID(c.CID()))
 	if !ok {
 		srv.sendServerMessage(c, "Your character is not in this room's list. Changing to Spectator.")
@@ -253,6 +296,7 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 		newCID = room.SpectatorCID
 		dst.Enter(newCID, c.UID())
 	}
+
 	// TODO: autopass on/off or sneaking? see how other servers do it
 	srv.sendServerMessageToRoom(dst, "%s enters from [%v] %s.", c.ShortString(), currRoom.ID(), currRoom.Name())
 	dst.LogEvent(room.EventEnter, "%s enters from [%v] %s.", c.LongString(), currRoom.ID(), currRoom.Name())
@@ -267,7 +311,8 @@ func (srv *SCServer) moveClient(c *client.Client, dst *room.Room) {
 
 	if c.Type() == client.AOClient {
 		c.SendRoomUpdateAO(packets.UpdateAll & ^packets.UpdatePlayer)
-	}
+	} // TODO: add spritechat
+
 	// TODO: send only to adjacent rooms?
 	srv.sendRoomUpdateAllAO(packets.UpdatePlayer)
 }

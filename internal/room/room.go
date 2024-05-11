@@ -41,14 +41,9 @@ var statusToString = map[Status]string{
 type LockState int
 
 const (
-	// All users can enter and speak.
-	LockFree LockState = iota
-
-	// All users can enter, speech is invite-only.
-	LockSpec
-
-	// Only invited users can enter.
-	LockLocked
+	LockFree   LockState = iota // All users can enter and speak.
+	LockSpec                    // All users can enter, speech is invite-only.
+	LockLocked                  // Only invited users can enter.
 )
 
 var lockToString = map[LockState]string{
@@ -71,13 +66,13 @@ type Room struct {
 	music    []MusicCategory
 	sides    []string
 
+	managing     bool
 	blankposting bool
 	iniswapping  bool
 	shouting     bool
 	immediate    bool
 
 	// TODO: evidence? i kinda hate evidence
-	// TODO: CMs (and permissions in general)
 
 	defBar   packets.BarHP
 	proBar   packets.BarHP
@@ -91,6 +86,7 @@ type Room struct {
 
 	// could be another set...
 	users       []*user
+	managers    []*user // users with elevated permissions exclusive to this room
 	lastSpeaker int // CID
 
 	// A list of invited UIDs. Used to decide who can speak when the room spectatable,
@@ -101,6 +97,7 @@ type Room struct {
 	mu     sync.Mutex
 }
 
+// A character in the room's charlist. The CID is this character's index in the chars list.
 type char struct {
 	name  string
 	taken bool
@@ -123,7 +120,9 @@ const (
 	EventCharacter
 	EventMusic
 	EventOOC
+    EventServerMsg
 	EventCommand
+	EventManager
 	EventIC
 	EventJudge
 	EventMod
@@ -132,33 +131,31 @@ const (
 )
 
 var eventToString = map[Event]string{
-	EventConfig:    "CONF ",
-	EventEnter:     "ENTER",
-	EventExit:      "EXIT ",
-	EventCharacter: "CHAR ",
-	EventMusic:     "MUSIC",
-	EventOOC:       "OOC  ",
-	EventCommand:   "CMD  ",
-	EventIC:        "IC   ",
-	EventJudge:     "JUD  ",
-	EventMod:       "MOD  ",
-	EventDebug:     "DEBUG",
-	EventFail:      "FAIL ",
+	EventConfig:    "CONF  ",
+	EventEnter:     "ENTER ",
+	EventExit:      "EXIT  ",
+	EventCharacter: "CHAR  ",
+	EventMusic:     "MUSIC ",
+	EventOOC:       "OOC   ",
+    EventServerMsg: "SERVER",
+	EventCommand:   "CMD   ",
+	EventManager:   "MGR   ",
+	EventIC:        "IC    ",
+	EventJudge:     "JUD   ",
+	EventMod:       "MOD   ",
+	EventDebug:     "DEBUG ",
+	EventFail:      "FAIL  ",
 }
 
 // MakeRooms creates a list of rooms according to the room configuration.
-func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, error) {
+func MakeRooms(roomsConf *config.RoomList, charsConf *config.Characters, musicConf *config.Music) ([]*Room, error) {
 	// TODO: warn about non-existant lists/adjancecies?
-	roomConf, err := config.ReadRooms()
-	if err != nil {
-		return nil, fmt.Errorf("room: Couldn't read room config (%w).", err)
-	}
-	if len(roomConf.Confs) == 0 {
+	if len(roomsConf.Confs) == 0 {
 		return nil, fmt.Errorf("room: Empty room list.")
 	}
 
 	var rooms []*Room
-	for i, conf := range roomConf.Confs {
+	for i, conf := range roomsConf.Confs {
 		// Read characters.
 		var chars []*char
 		charLists := findCharLists(charsConf, conf.CharLists)
@@ -197,14 +194,15 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 			chars:        chars,
 			music:        music,
 			sides:        conf.Sides,
+			managing:     conf.AllowManagers,
 			blankposting: conf.AllowBlankpost,
 			iniswapping:  conf.AllowIniswap,
 			shouting:     conf.AllowShouting,
 			immediate:    conf.ForceImmediate,
 			bg:           conf.DefaultBg,
 			lockBg:       conf.LockBg,
-            defBar:       packets.BarMax,
-            proBar:       packets.BarMax,
+			defBar:       packets.BarMax,
+			proBar:       packets.BarMax,
 			song:         packets.SongStop, // the canonical "stop" song for AO
 			ambiance:     conf.DefaultAmbiance,
 			status:       StatusIdle,
@@ -216,7 +214,7 @@ func MakeRooms(charsConf *config.Characters, musicConf *config.Music) ([]*Room, 
 	}
 
 	// Configure adjacencies.
-	for i, conf := range roomConf.Confs {
+	for i, conf := range roomsConf.Confs {
 		// We check adjancecies for the i-th room.
 		adjNames := conf.AdjacentRooms
 		adjRooms := findRooms(rooms, adjNames)
@@ -385,9 +383,9 @@ func (r *Room) Bar(bar packets.BarSelect) packets.BarHP {
 		return r.proBar
 	case packets.BarDef:
 		return r.defBar
-    default:
-        // make defBar the default because the compiler demands i put something here lol
-        return r.defBar
+	default:
+		// make defBar the default because the compiler demands i put something here lol
+		return r.defBar
 	}
 }
 
@@ -395,17 +393,17 @@ func (r *Room) Bar(bar packets.BarSelect) packets.BarHP {
 func (r *Room) SetBar(bar packets.BarSelect, value packets.BarHP) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-    // we clamp the value here, just to be sure.
-    value = max(value, packets.BarMin)
-    value = min(value, packets.BarMax)
+	// we clamp the value here, just to be sure.
+	value = max(value, packets.BarMin)
+	value = min(value, packets.BarMax)
 	switch bar {
 	case packets.BarPro:
-        r.proBar = value
+		r.proBar = value
 	case packets.BarDef:
 		r.defBar = value
-    default:
-        // make defBar the default because the compiler demands i put something here lol
-        r.defBar = value
+	default:
+		// make defBar the default because the compiler demands i put something here lol
+		r.defBar = value
 	}
 }
 
@@ -442,6 +440,70 @@ func (r *Room) AllowBlankpost() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.blankposting
+}
+
+// Returns whether promoting to manager is allowed.
+func (r *Room) AllowManagers() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.managing
+}
+
+// Sets whether promoting to manager is allowed.
+func (r *Room) SetAllowManagers(allow bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.managing = allow
+}
+
+// Returns the UIDs of the rooms' managers.
+func (r *Room) Managers() []int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var uids []int
+	for _, u := range r.managers {
+		uids = append(uids, u.userID)
+	}
+	return uids
+}
+
+// Checks whether a UID is a manager.
+func (r *Room) IsManager(uid int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	mgr := false
+	for _, u := range r.managers {
+		if u.userID == uid {
+			mgr = true
+		}
+	}
+	return mgr
+}
+
+// Adds a manager to the room.
+func (r *Room) AddManager(uid int) {
+	u := r.getUser(uid)
+	if u.userID == invalidUID {
+		return
+	}
+
+    r.LogEvent(EventManager, "UID %d is now managing this room.", uid)
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.managers = append(r.managers, u)
+}
+
+// Removes a manager from the room.
+func (r *Room) RemoveManager(uid int) {
+    r.LogEvent(EventManager, "UID %d is no longer this room.", uid)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i, u := range r.managers {
+		if u.userID == uid {
+			r.managers = append(r.managers[:i], r.managers[i+1:]...)
+		}
+	}
 }
 
 // Returns whether iniswapping is allowed.
@@ -715,7 +777,7 @@ func (r *Room) getUser(uid int) *user {
 		}
 	}
 	// shouldn't happen, probably
-	r.logger.Errorf("Tried to get non-existant UID (%v)! This shouldn't happen. Warn the developer!", uid)
+	r.LogEvent(EventFail, "Tried to get user with %v, but not found.", uid)
 	return &user{SpectatorCID, invalidUID}
 }
 

@@ -80,16 +80,17 @@ func init() {
 				"\"/get room\" to get a list of users in the same room as you;\n" +
 				"\"/get rooms\" to get a list of users in the rooms that you can see;\n" +
 				"\"/get allrooms\" to get a list of all users in the server."},
-		// "manage": {(*SCServer).cmdManage, 0, perms.None,
-		// 	"/manage\n" +
-		// 		"/manage <uids...>\n" +
-		// 		"/manage <'cid'|'uid'> <ids...>",
-		// 	"Promotes user to manager (if allowed). If already promoted, user can promote others. Will use UID to promote others unless otherwise specified."},
-		// /promote
-		// /unmanage
-		// "bg": {(*SCServer).cmdBackground, 1, perms.Background,
-		// 	"/bg <background...>",
-		// 	"Changes the room's background."},
+		"manage": {(*SCServer).cmdManage, 0, perms.None,
+			"/manage [uids...]\n" +
+				"/manage <'cid'|'uid'> <ids...>",
+			"Promotes to manager (if allowed). If already promoted, user can promote others. Will use UID to promote others unless otherwise specified."},
+		"unmanage": {(*SCServer).cmdUnmanage, 0, perms.None,
+			"/unmanage [uids...]\n" +
+				"/unmanage <'cid'|'uid'> <ids...>",
+			"Demotes user from manager. Only managers can use this command. Will use UID to demote others unless otherwise specified."},
+		"bg": {(*SCServer).cmdBackground, 1, perms.Background,
+			"/bg <background...>",
+			"Changes the room's background."},
 		// "ambiance": {(*SCServer).cmdAmbiance, 1, perms.Ambiance,
 		// 	"/bg <background...>",
 		// 	"Changes the room's ambiance."},
@@ -104,7 +105,7 @@ func init() {
 
 func (srv *SCServer) handleCommand(c *client.Client, name string, args []string) {
 	cmd, ok := cmdMap[name]
-    joinedArgs := strings.Join(args, " ") // for the log messages
+	joinedArgs := strings.Join(args, " ") // for the log messages
 	if !ok {
 		srv.sendServerMessage(c, fmt.Sprintf("'/%v' is an unknown command. Use /help to see a list of commands.", name))
 		c.Room().LogEvent(room.EventFail, "%s tried running unknown command '/%s %s'.",
@@ -134,7 +135,7 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 			c.LongString(), name, strings.Join(args, " "), msg)
 	}
 
-    // just in case, lmao
+	// just in case, lmao
 	if msg == unreachableMsg {
 		srv.logger.Warnf("%s reached supposedly unreachable code with command '/%s %s'.",
 			c.LongString(), name, strings.Join(args, " "))
@@ -600,6 +601,219 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool, bool
 	default:
 		return "Invalid argument.", false, true
 	}
+}
+
+// TODO: remove manager privileges when moving rooms
+func (srv *SCServer) cmdManage(c *client.Client, args []string) (string, bool, bool) {
+	if len(args) == 0 {
+		// promoting self
+		if len(c.Room().Managers()) != 0 && !c.HasPerms(perms.BypassLocks) {
+			return "This room already has a manager.", false, false
+		}
+		if !c.Room().AllowManagers() && !c.HasPerms(perms.BypassLocks) {
+			return "Promoting to manager is not allowed in this room.", false, false
+		}
+		if c.Room().IsManager(c.UID()) {
+			return "You are already a manager in this room!", false, false
+		}
+
+		c.Room().AddManager(c.UID())
+		c.AddRole(srv.mgrRole)
+		srv.sendServerMessageToRoom(c.Room(), "%s is now managing this room.", c.ShortString())
+		return fmt.Sprintf("Promoted to '%s'!", srv.mgrRole.Name), true, false
+	}
+
+	// if we're here, then the user is trying to promote others
+	if !c.Room().IsManager(c.UID()) {
+		return "You must be a manager yourself to promote others.", false, false
+	}
+
+	// check if first argument is target type. if it is, consume it
+	target := parseTarget(args[0])
+	if target != Default {
+		args = args[1:]
+	}
+	// now the only arguments left are the ids
+	switch target {
+	case Default:
+		fallthrough
+	case UID:
+		var uids []int
+		for _, arg := range args {
+			uid, err := strconv.Atoi(arg)
+			if err != nil {
+				return fmt.Sprintf("'%v' is not a valid UID.", uid), false, true
+			}
+			uids = append(uids, uid)
+		}
+
+		var outMsg string
+		var goodUIDs string
+		for _, uid := range uids {
+			cl := srv.getByUID(uid)
+			if cl == nil {
+				outMsg += fmt.Sprintf("No client with UID %v in the server.\n", uid)
+				continue
+			} else if c.Room() != cl.Room() {
+				outMsg += fmt.Sprintf("No client with UID %v in this room.\n", uid)
+				continue
+			} else if c.Room().IsManager(cl.UID()) {
+				outMsg += fmt.Sprintf("UID %v is already a manager.\n", uid)
+				continue
+			}
+			goodUIDs += fmt.Sprintf("%v, ", uid)
+			cl.AddRole(srv.mgrRole)
+			c.Room().AddManager(uid)
+			srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
+		}
+		outMsg += fmt.Sprintf("Successfully promoted by UID: %s.", goodUIDs[:len(goodUIDs)-2])
+		return outMsg, true, false
+
+	case CID:
+		var cids []int
+		for _, arg := range args {
+			cid, err := strconv.Atoi(arg)
+			if err != nil {
+				return fmt.Sprintf("'%v' is not a valid CID.", cid), false, false
+			}
+			cids = append(cids, cid)
+		}
+
+		var outMsg string
+		var goodCIDs string
+		for _, cid := range cids {
+			found := false
+			for _, cl := range srv.getClientsInRoom(c.Room()) {
+				if cl.CID() == cid {
+					found = true
+					if c.Room().IsManager(cl.UID()) {
+						outMsg += fmt.Sprintf("CID %v is already a manager.\n", cid)
+					}
+					goodCIDs += fmt.Sprintf("%v, ", cid)
+					c.Room().AddManager(cl.UID())
+					cl.AddRole(srv.mgrRole)
+					srv.sendServerMessageToRoom(cl.Room(), "%s is no longer managing this room.", cl.ShortString())
+					break
+				}
+			}
+			if !found {
+				outMsg += fmt.Sprintf("No client with CID %v in this room.\n", cid)
+			}
+		}
+		outMsg += fmt.Sprintf("Successfully promoted by CID: %s.", goodCIDs[:len(goodCIDs)-2])
+		return outMsg, true, false
+
+	case IPID:
+		return "Can't promote by IPID.", false, true
+	}
+
+	// unreachable
+	return unreachableMsg, false, false
+}
+
+func (srv *SCServer) cmdUnmanage(c *client.Client, args []string) (string, bool, bool) {
+	if len(args) == 0 {
+		// demoting self
+		if !c.Room().IsManager(c.UID()) {
+			return "You are not a manager!", false, false
+		}
+
+		c.Room().RemoveManager(c.UID())
+		c.RemoveRole(srv.mgrRole)
+		srv.sendServerMessageToRoom(c.Room(), "%s is no longer managing this room.", c.ShortString())
+		return fmt.Sprintf("No longer '%s'!", srv.mgrRole.Name), true, false
+	}
+
+	// if we're here, then the user is trying to demote others
+	if !c.Room().IsManager(c.UID()) {
+		return "You must be a manager yourself to demote others.", false, false
+	}
+
+	// check if first argument is target type. if it is, consume it
+	target := parseTarget(args[0])
+	if target != Default {
+		args = args[1:]
+	}
+	// now the only arguments left are the ids
+	switch target {
+	case Default:
+		fallthrough
+	case UID:
+		var uids []int
+		for _, arg := range args {
+			uid, err := strconv.Atoi(arg)
+			if err != nil {
+				return fmt.Sprintf("'%v' is not a valid UID.", uid), false, true
+			}
+			uids = append(uids, uid)
+		}
+
+		var outMsg string
+		var goodUIDs string
+		for _, uid := range uids {
+			cl := srv.getByUID(uid)
+			if cl == nil {
+				outMsg += fmt.Sprintf("No client with UID %v in the server.\n", uid)
+				continue
+			} else if c.Room() != cl.Room() {
+				outMsg += fmt.Sprintf("No client with UID %v in this room.\n", uid)
+				continue
+			} else if !c.Room().IsManager(cl.UID()) {
+				outMsg += fmt.Sprintf("UID %v is not a manager.\n", uid)
+				continue
+			}
+			goodUIDs += fmt.Sprintf("%v, ", uid)
+			cl.RemoveRole(srv.mgrRole)
+			c.Room().RemoveManager(uid)
+			srv.sendServerMessageToRoom(cl.Room(), "%s is no longer managing this room.", cl.ShortString())
+		}
+		outMsg += fmt.Sprintf("Successfully demoted by UID: %s.", goodUIDs[:len(goodUIDs)-2])
+		return outMsg, true, false
+
+	case CID:
+		var cids []int
+		for _, arg := range args {
+			cid, err := strconv.Atoi(arg)
+			if err != nil {
+				return fmt.Sprintf("'%v' is not a valid CID.", cid), false, false
+			}
+			cids = append(cids, cid)
+		}
+
+		var outMsg string
+		var goodCIDs string
+		for _, cid := range cids {
+			found := false
+			for _, cl := range srv.getClientsInRoom(c.Room()) {
+				if cl.CID() == cid {
+					found = true
+					if !c.Room().IsManager(cl.UID()) {
+						outMsg += fmt.Sprintf("CID %v is not a manager.\n", cid)
+					}
+					goodCIDs += fmt.Sprintf("%v, ", cid)
+					c.Room().RemoveManager(cl.UID())
+					cl.RemoveRole(srv.mgrRole)
+					srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
+					break
+				}
+			}
+			if !found {
+				outMsg += fmt.Sprintf("No client with CID %v in this room.\n", cid)
+			}
+		}
+		outMsg += fmt.Sprintf("Successfully demoted by CID: %s.", goodCIDs[:len(goodCIDs)-2])
+		return outMsg, true, false
+
+	case IPID:
+		return "Can't demote by IPID.", false, true
+	}
+
+	// unreachable
+	return unreachableMsg, false, false
+}
+
+func (srv *SCServer) cmdBackground(c *client.Client, args []string) (string, bool, bool) {
+	return "lol", true, false
 }
 
 // Parses a target. Returns Default if no matches are found.
