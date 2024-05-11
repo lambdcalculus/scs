@@ -1,5 +1,8 @@
 package server
 
+// TODO: flags
+// could be good to make duration optional in a few of the commands
+
 import (
 	"fmt"
 	"math"
@@ -18,8 +21,7 @@ import (
 type targetType int
 
 const (
-	// Default type for the command.
-	Default targetType = iota
+	Default targetType = iota // Default type for the command.
 	CID
 	UID
 	IPID
@@ -32,9 +34,9 @@ const noReason string = "No reason given."
 const unreachableMsg string = "You shouldn't see this message! If you do, please tell the server developer."
 
 // A cmdFunc attempts to execute a command with the passed args. It returns whether
-// the command's usage should be sent, along with a message to send to the user of
-// the command.
-type cmdFunc func(srv *SCServer, c *client.Client, args []string) (string, bool)
+// a message to send the client who issued the command, and two bools: one indicating
+// whether the command was successful, and one indicating whether the usage should be sent.
+type cmdFunc func(srv *SCServer, c *client.Client, args []string) (reply string, success bool, sendUsage bool)
 
 type cmdHandler struct {
 	cmdFunc  cmdFunc
@@ -78,37 +80,72 @@ func init() {
 				"\"/get room\" to get a list of users in the same room as you;\n" +
 				"\"/get rooms\" to get a list of users in the rooms that you can see;\n" +
 				"\"/get allrooms\" to get a list of all users in the server."},
+		// "manage": {(*SCServer).cmdManage, 0, perms.None,
+		// 	"/manage\n" +
+		// 		"/manage <uids...>\n" +
+		// 		"/manage <'cid'|'uid'> <ids...>",
+		// 	"Promotes user to manager (if allowed). If already promoted, user can promote others. Will use UID to promote others unless otherwise specified."},
+		// /promote
+		// /unmanage
+		// "bg": {(*SCServer).cmdBackground, 1, perms.Background,
+		// 	"/bg <background...>",
+		// 	"Changes the room's background."},
+		// "ambiance": {(*SCServer).cmdAmbiance, 1, perms.Ambiance,
+		// 	"/bg <background...>",
+		// 	"Changes the room's ambiance."},
+		// /lock
+		// /unlock
+		// /toggle
+		// /invite
+		// /uninvite
+		// /play
 	}
 }
 
 func (srv *SCServer) handleCommand(c *client.Client, name string, args []string) {
 	cmd, ok := cmdMap[name]
+    joinedArgs := strings.Join(args, " ") // for the log messages
 	if !ok {
 		srv.sendServerMessage(c, fmt.Sprintf("'/%v' is an unknown command. Use /help to see a list of commands.", name))
-		c.Room().LogEvent(room.EventFail, "%s tried running unknown command '/%s' with arguments %#v",
-			c.LongString(), name, args)
+		c.Room().LogEvent(room.EventFail, "%s tried running unknown command '/%s %s'.",
+			c.LongString(), name, joinedArgs)
 		return
 	}
 	if len(args) < cmd.minArgs {
 		srv.sendServerMessage(c, fmt.Sprintf("Not enough arguments for /%v.\n Usages of /%v:\n%v", name, name, cmd.usage))
-		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s' with too few arguments %#v.",
-			c.LongString(), name, args)
+		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s %s' but there are too few arguments.",
+			c.LongString(), name, joinedArgs)
 		return
 	}
 	if !c.HasPerms(cmd.reqPerms) {
 		// TODO: list required permissions
 		srv.sendServerMessage(c, fmt.Sprintf("You do not have the required permisions to use /%v.", name))
-		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s' with arguments %#v but did not have permission.",
-			c.LongString(), name, args)
+		c.Room().LogEvent(room.EventFail, "%s tried running command '/%s %s' but did not have permission.",
+			c.LongString(), name, joinedArgs)
 		return
 	}
-	c.Room().LogEvent(room.EventCommand, "%s ran command '/%s' with arguments %#v.", c.LongString(), name, args)
-	msg, usage := cmd.cmdFunc(srv, c, args)
+
+	msg, success, sendUsage := cmd.cmdFunc(srv, c, args)
+	if success {
+		c.Room().LogEvent(room.EventCommand, "%s ran command '/%s %s'.",
+			c.LongString(), name, strings.Join(args, " "))
+	} else {
+		c.Room().LogEvent(room.EventFail, "%s tried to run command '/%s %s' but failed (%s)",
+			c.LongString(), name, strings.Join(args, " "), msg)
+	}
+
+    // just in case, lmao
+	if msg == unreachableMsg {
+		srv.logger.Warnf("%s reached supposedly unreachable code with command '/%s %s'.",
+			c.LongString(), name, strings.Join(args, " "))
+	}
+
 	var reply string
 	if msg != "" {
+		reply += name + ": "
 		reply += msg
 	}
-	if usage {
+	if sendUsage {
 		if reply != "" {
 			reply += "\n"
 		}
@@ -119,45 +156,45 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 	}
 }
 
-func (srv *SCServer) cmdHelp(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdHelp(c *client.Client, args []string) (string, bool, bool) {
 	if len(args) == 0 {
 		// TODO: make this prettier
 		msg := "Available commands:\n"
 		for cmd := range cmdMap {
 			msg += "/" + cmd + ", "
 		}
-		return msg[:len(msg)-2], false
+		return msg[:len(msg)-2], true, false
 	}
 	cmd, ok := cmdMap[args[0]]
 	if !ok {
-		return fmt.Sprintf("'%v' is not a valid command.", args[0]), false
+		return fmt.Sprintf("'%v' is not a valid command.", args[0]), false, false
 	}
-	return fmt.Sprintf("Usage of /%v:\n%v\nDetails: %v", args[0], cmd.usage, cmd.detailed), false
+	return fmt.Sprintf("Usage of /%v:\n%v\nDetails: %v", args[0], cmd.usage, cmd.detailed), true, false
 }
 
-func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool, bool) {
 	ok, role, err := srv.db.CheckAuth(args[0], args[1])
 	if err != nil {
 		srv.logger.Warnf("Error in authentication (%v).", err)
-		return "Couldn't authenticate: internal error.", false
+		return "Couldn't authenticate: internal error.", false, false
 	}
 	if !ok {
-		return "Incorrect password, or user doesn't exist.", false
+		return "Incorrect password, or user doesn't exist.", false, false
 	}
 	for _, r := range srv.roles {
 		if r.Name == role {
-			c.SetPerms(r.Perms)
+			c.AddRole(r)
 			if r.Perms&perms.HearModCalls != 0 {
 				c.AddGuard()
 			}
 			// TODO: say permissions?
-			return fmt.Sprintf("Successfully authenticated as user '%v' and role '%v'.", args[0], role), false
+			return fmt.Sprintf("Successfully authenticated as user '%v' and role '%v'.", args[0], role), true, false
 		}
 	}
-	return fmt.Sprintf("Was able to authenticate, but role '%v' doesn't exist.", role), false
+	return fmt.Sprintf("Was able to authenticate, but role '%v' doesn't exist.", role), false, false
 }
 
-func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool, bool) {
 	// first, check if it's specifying a mute. if it is, consume an argument
 	var mute client.MuteState
 	var from string
@@ -195,7 +232,7 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool) {
 	// now the next 3 arguments are ID, duration and, optionally, reason
 	dur, err := duration.ParseDuration(args[1])
 	if err != nil {
-		return fmt.Sprintf("''%s' is not a valid duration: %s.", args[1], err), true
+		return fmt.Sprintf("''%s' is not a valid duration: %s.", args[1], err), false, true
 	}
 
 	var reason string
@@ -212,24 +249,24 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool) {
 		uid, err := strconv.Atoi(args[0])
 		if err != nil {
 			// We send the usage here, in case the first argument was gibberish.
-			return fmt.Sprintf("'%v' is not a valid UID.", args[1]), true
+			return fmt.Sprintf("'%v' is not a valid UID.", args[1]), false, true
 		}
 		toMute := srv.getByUID(uid)
 		if toMute == nil {
-			return fmt.Sprintf("No client with UID '%v'.", uid), false
+			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
 		}
 		toMute.AddMute(mute, dur)
 		srv.sendServerMessage(toMute, "You have been muted%s for %s for the reason: %s", from, args[1], reason)
 		if err := srv.db.AddMute(toMute.IPID(), toMute.Ident(), reason, c.Username(), dur); err != nil {
 			srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
 		}
-		return fmt.Sprintf("Successfully muted client with UID %v for %s.", uid, args[1]), false
+		return fmt.Sprintf("Successfully muted client with UID %v for %s.", uid, args[1]), true, false
 
 	case CID:
 		cid, err := strconv.Atoi(args[0])
 		// TODO: check for Spectator?
 		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false
+			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false, false
 		}
 		for _, cl := range srv.getClientsInRoom(c.Room()) {
 			if cl.CID() == cid {
@@ -238,16 +275,16 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool) {
 				if err := srv.db.AddMute(cl.IPID(), cl.Ident(), reason, c.Username(), dur); err != nil {
 					srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
 				}
-				return fmt.Sprintf("Successfully muted client with CID %v for %s.", cid, args[1]), false
+				return fmt.Sprintf("Successfully muted client with CID %v for %s.", cid, args[1]), true, false
 			}
 		}
-		return fmt.Sprintf("No client with CID %v in this room.", cid), false
+		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
 
 	case IPID:
 		ipid := args[0]
 		toMute := srv.getByIPID(ipid)
 		if toMute == nil {
-			return fmt.Sprintf("No client with IPID '%v'.", ipid), false
+			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
 		}
 		for _, cl := range toMute {
 			cl.AddMute(mute, dur)
@@ -256,14 +293,98 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool) {
 		if err := srv.db.AddMute(ipid, toMute[0].Ident(), reason, c.Username(), dur); err != nil {
 			srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
 		}
-		return fmt.Sprintf("Successfully muted clients with IPID %v for %s.", ipid, args[1]), false
+		return fmt.Sprintf("Successfully muted clients with IPID %v for %s.", ipid, args[1]), true, false
 	}
 
 	// unreachable
-	return unreachableMsg, false
+	return unreachableMsg, false, false
 }
 
-func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdUnmute(c *client.Client, args []string) (string, bool, bool) {
+	// first, check if it's specifying a unmute. if it is, consume an argument
+	var unmute client.MuteState
+	var from string
+	switch strings.ToLower(args[0]) {
+	case "ic":
+		args = args[1:]
+		unmute = client.MutedIC
+		from = " from IC chat"
+	case "ooc":
+		args = args[1:]
+		unmute = client.MutedOOC
+		from = " from OOC chat"
+	case "jud":
+		args = args[1:]
+		unmute = client.MutedJudge
+		from = " from using judge commands"
+	case "music":
+		args = args[1:]
+		unmute = client.MutedMusic
+		from = " from playing music"
+	case "all":
+		args = args[1:]
+		fallthrough
+	default:
+		unmute = client.MutedAll
+		from = ""
+	}
+	// now, check for a target type. if specified, consume an argument
+	var target targetType
+	target = parseTarget(args[0])
+	if target != Default {
+		args = args[1:]
+	}
+	// now the next argument is the ID
+	switch target {
+	case Default:
+		fallthrough
+	case UID:
+		uid, err := strconv.Atoi(args[0])
+		if err != nil {
+			// We send the usage here, in case the first argument was gibberish.
+			return fmt.Sprintf("'%v' is not a valid UID.", args[1]), false, true
+		}
+		toUnmute := srv.getByUID(uid)
+		if toUnmute == nil {
+			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
+		}
+		toUnmute.RemoveMute(unmute)
+		srv.sendServerMessage(toUnmute, "You have been unmuted%s.", from)
+		return fmt.Sprintf("Successfully unmuted client with UID %v.", uid), true, false
+
+	case CID:
+		cid, err := strconv.Atoi(args[0])
+		// TODO: check for Spectator?
+		if err != nil {
+			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false, false
+		}
+		for _, cl := range srv.getClientsInRoom(c.Room()) {
+			if cl.CID() == cid {
+				cl.RemoveMute(unmute)
+				srv.sendServerMessage(cl, "You have been unmuted%s.", from)
+				return fmt.Sprintf("Successfully unmuted client with CID %v.", cid), true, false
+			}
+		}
+		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
+
+	case IPID:
+		ipid := args[0]
+		toMute := srv.getByIPID(ipid)
+		if toMute == nil {
+			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
+		}
+		for _, cl := range toMute {
+			cl.RemoveMute(unmute)
+			srv.sendServerMessage(cl, "You have been unmuted%s.", from)
+		}
+		return fmt.Sprintf("Successfully unmuted clients with IPID %v.", ipid), true, false
+	}
+
+	// unreachable
+	return unreachableMsg, false, false
+}
+
+func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool, bool) {
 	// check if target type is specified. if it is, consume an argument
 	var target targetType
 	target = parseTarget(args[0])
@@ -286,23 +407,23 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 		uid, err := strconv.Atoi(args[0])
 		if err != nil {
 			// We send the usage here, in case the first argument was gibberish.
-			return fmt.Sprintf("'%v' is not a valid UID.", args[0]), true
+			return fmt.Sprintf("'%v' is not a valid UID.", args[0]), false, true
 		}
 		toKick := srv.getByUID(uid)
 		if toKick == nil {
-			return fmt.Sprintf("No client with UID '%v'.", uid), false
+			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
 		}
 		if err := srv.db.AddKick(toKick.IPID(), toKick.Ident(), reason, c.Username()); err != nil {
 			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
 		}
 		srv.kickClient(toKick, reason)
-		return fmt.Sprintf("Successfully kicked client with UID %v.", uid), false
+		return fmt.Sprintf("Successfully kicked client with UID %v.", uid), true, false
 
 	case CID:
 		cid, err := strconv.Atoi(args[0])
 		// TODO: check for Spectator?
 		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false
+			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false, false
 		}
 		for _, cl := range srv.getClientsInRoom(c.Room()) {
 			if cl.CID() == cid {
@@ -310,16 +431,16 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 				if err := srv.db.AddKick(cl.IPID(), cl.Ident(), reason, c.Username()); err != nil {
 					srv.logger.Warnf("Couldn't add kick to the database: %s", err)
 				}
-				return fmt.Sprintf("Successfully kicked client with CID %v.", cid), false
+				return fmt.Sprintf("Successfully kicked client with CID %v.", cid), true, false
 			}
 		}
-		return fmt.Sprintf("No client with CID %v in this room.", cid), false
+		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
 
 	case IPID:
 		ipid := args[0]
 		toKick := srv.getByIPID(ipid)
 		if toKick == nil {
-			return fmt.Sprintf("No client with IPID '%v'.", ipid), false
+			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
 		}
 		for _, cl := range toKick {
 			srv.kickClient(cl, reason)
@@ -327,14 +448,15 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool) {
 		if err := srv.db.AddKick(ipid, toKick[0].Ident(), reason, c.Username()); err != nil {
 			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
 		}
-		return fmt.Sprintf("Successfully kicked clients with IPID %v.", ipid), false
+		return fmt.Sprintf("Successfully kicked clients with IPID %v.", ipid), true, false
 	}
 
 	// unreachable
-	return unreachableMsg, false
+	return unreachableMsg, false, false
 }
 
-func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool) {
+	// TODO: add flag for explicitly banned offline targets
 	// check if target type is specified. if it is, consume an argument.
 	var target targetType
 	target = parseTarget(args[0])
@@ -354,7 +476,7 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
 		cid, err := strconv.Atoi(args[0])
 		// TODO: check for Spectator?
 		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false
+			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false, false
 		}
 		found := false
 		for _, cl := range srv.getClientsInRoom(c.Room()) {
@@ -364,17 +486,17 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
 			}
 		}
 		if !found {
-			return fmt.Sprintf("No client with CID %v in this room.", cid), false
+			return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
 		}
 
 	case UID:
 		uid, err := strconv.Atoi(args[0])
 		if err != nil {
-			return fmt.Sprintf("'%s' is not a valid UID.", args[0]), false
+			return fmt.Sprintf("'%s' is not a valid UID.", args[0]), false, false
 		}
 		cl := srv.getByUID(uid)
 		if cl == nil {
-			return fmt.Sprintf("No client with UID %v.", uid), false
+			return fmt.Sprintf("No client with UID %v.", uid), false, false
 		}
 		ipid = cl.IPID()
 	}
@@ -385,7 +507,7 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
 	if args[1] == "perma" {
 		dur = time.Duration(math.MaxInt64)
 	} else if dur, err = duration.ParseDuration(args[1]); err != nil {
-		return fmt.Sprintf("'%s' is not a valid duration: %s.", args[1], err), false
+		return fmt.Sprintf("'%s' is not a valid duration: %s.", args[1], err), false, false
 	}
 
 	reason := strings.Join(args[2:], " ")
@@ -396,10 +518,10 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
 		outMsg += fmt.Sprintf("note: No clients currently online with IPID %s, adding ban record with only IPID.\n", ipid)
 		if err := srv.db.AddBan(ipid, "", reason, c.Username(), dur); err != nil {
 			srv.logger.Warnf("Couldn't add ban (%s).", err)
-			return "Database error. Warn the host!", false
+			return "Database error. Warn the host!", false, false
 		}
 		outMsg += fmt.Sprintf("Successfully banned IPID %s.", ipid)
-		return outMsg, false
+		return outMsg, true, false
 	}
 
 	banMsg := fmt.Sprintf("You have been banned. Reason: %s (until %s)", reason, time.Now().Add(dur).UTC().Format(time.UnixDate))
@@ -420,14 +542,14 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool) {
 	for _, hdid := range hdids {
 		if err := srv.db.AddBan(ipid, hdid, reason, c.Username(), dur); err != nil {
 			srv.logger.Warnf("Couldn't add ban (%s).", err)
-			return "Database error. Warn the host!", false
+			return "Database error. Warn the host!", false, false
 		}
 	}
 
-	return fmt.Sprintf("Successfully banned IPID %s and %v HDIDs.", ipid, len(hdids)), false
+	return fmt.Sprintf("Successfully banned IPID %s and %v HDIDs.", ipid, len(hdids)), true, false
 }
 
-func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
+func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool, bool) {
 	switch args[0] {
 	// TODO: permissions and stuff
 	case "room":
@@ -440,7 +562,7 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 				msg += cl.String()
 			}
 		}
-		return msg, false
+		return msg, true, false
 
 	case "rooms":
 		var msg string
@@ -457,7 +579,7 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 			}
 			msg += submsg
 		}
-		return msg, false
+		return msg, true, false
 
 	case "allrooms":
 		var msg string
@@ -474,9 +596,9 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool) {
 			}
 			msg += submsg
 		}
-		return msg, false
+		return msg, true, false
 	default:
-		return "", true
+		return "Invalid argument.", false, true
 	}
 }
 
