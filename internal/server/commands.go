@@ -519,7 +519,6 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 			hdids = append(hdids, cl.Ident())
 		}
 
-
 		if first {
 			banned.WriteString(fmt.Sprintf("%v", cl.ShortString()))
 			first = false
@@ -763,13 +762,23 @@ func (srv *SCServer) cmdBg(c *client.Client, args []string) (string, bool, bool)
 	if c.Room().BgLock() && !c.HasPerms(perms.Background) {
 		return "You do not have permission to change the background. Try promoting with /manage.", false, false
 	}
-	srv.sendServerMessageToRoom(c.Room(), "%s changed the background to '%s'.", c.ShortString(), strings.Join(args, " "))
+	bg := strings.Join(args, " ")
+	c.Room().SetBackground(bg)
+	for _, cl := range srv.getClientsInRoom(c.Room()) {
+		cl.UpdateBackground()
+	}
+	srv.sendServerMessageToRoom(c.Room(), "%s changed the background to '%s'.", c.ShortString(), bg)
 	return "", true, false
 }
 
 func (srv *SCServer) cmdAmbiance(c *client.Client, args []string) (string, bool, bool) {
 	if c.Room().AmbLock() && !c.HasPerms(perms.Ambiance) {
 		return "You do not have permission to change the ambiance. Try promoting with /manage first.", false, false
+	}
+	amb := strings.Join(args, " ")
+	c.Room().SetAmbiance(amb)
+	for _, cl := range srv.getClientsInRoom(c.Room()) {
+		cl.UpdateAmbiance()
 	}
 	srv.sendServerMessageToRoom(c.Room(), "%s changed the ambiance to '%s'.", c.ShortString(), strings.Join(args, " "))
 	return "", true, false
