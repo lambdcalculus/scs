@@ -86,9 +86,9 @@ func init() {
 				"\"/kick ipid 1Il05w dumb\" (kicks IPID 1Il05w for reason 'dumb')"},
 		// TODO: default ban time?
 		"ban": {(*SCServer).cmdBan, 3, perms.Ban,
-			"/ban <ipid> <duration|'perma'> <reason...>\n" +
+			"/ban <uid> <duration|'perma'> <reason...>\n" +
 				"/ban <'cid'|'uid'|'ipid'> <id> <duration> <reason...>",
-			"Bans a user for the specified duration. Reason is required. Bans by IPID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Duration can be 'perma' for permanent ban.\n" +
+			"Bans a user for the specified duration. Reason is required. Bans by UID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Duration can be 'perma' for permanent ban. If banning by IPID and no client with that IPID is online, will add a ban record for that IPID with no associated HDID.\n" +
 				"Example usage:\n" +
 				"\"/ban 1Il05w 3d spamming a lot\" (bans IPID 1Il05w for 3 days for 'spamming a lot')\n" +
 				"\"/ban uid 3 3d spamming a lot\" (bans UID 3 for 3 days for 'spamming a lot')"},
@@ -428,17 +428,17 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool, boo
 			continue
 		}
 
-		srv.kickClient(cl, reason)
-		if err := srv.db.AddKick(cl.IPID(), cl.Ident(), reason, c.Username()); err != nil {
-			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
-		}
-
 		if first {
 			kicked.WriteString(fmt.Sprintf("%v", cl.ShortString()))
 			first = false
 		} else {
 			kicked.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
 		}
+
+		if err := srv.db.AddKick(cl.IPID(), cl.Ident(), reason, c.Username()); err != nil {
+			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
+		}
+		srv.kickClient(cl, reason)
 	}
 
 	if first { // if this is true, couldn't kick anyone
@@ -519,7 +519,6 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 			hdids = append(hdids, cl.Ident())
 		}
 
-		srv.kickClient(cl, banMsg)
 
 		if first {
 			banned.WriteString(fmt.Sprintf("%v", cl.ShortString()))
@@ -527,6 +526,7 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 		} else {
 			banned.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
 		}
+		srv.kickClient(cl, banMsg)
 	}
 
 	if first { // if this is still true, couldn't ban anyone
