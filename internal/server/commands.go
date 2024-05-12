@@ -223,11 +223,14 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool, boo
 		mute = client.MutedAll
 		from = ""
 	}
+
 	// now, check for a target type. if specified, consume an argument
-	var target targetType
-	target = parseTarget(args[0])
-	if target != Default {
+	var t targetType
+	t = parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
+	} else {
+		t = UID
 	}
 
 	// now the next 3 arguments are ID, duration and, optionally, reason
@@ -243,62 +246,44 @@ func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool, boo
 		reason = strings.Join(args[2:], " ")
 	}
 
-	switch target {
-	case Default:
-		fallthrough
-	case UID:
-		uid, err := strconv.Atoi(args[0])
-		if err != nil {
-			// We send the usage here, in case the first argument was gibberish.
-			return fmt.Sprintf("'%v' is not a valid UID.", args[1]), false, true
-		}
-		toMute := srv.getByUID(uid)
-		if toMute == nil {
-			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
-		}
-		toMute.AddMute(mute, dur)
-		srv.sendServerMessage(toMute, "You have been muted%s for %s for the reason: %s", from, args[1], reason)
-		if err := srv.db.AddMute(toMute.IPID(), toMute.Ident(), reason, c.Username(), dur); err != nil {
-			srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
-		}
-		return fmt.Sprintf("Successfully muted client with UID %v for %s.", uid, args[1]), true, false
-
-	case CID:
-		cid, err := strconv.Atoi(args[0])
-		// TODO: check for Spectator?
-		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false, false
-		}
-		for _, cl := range srv.getClientsInRoom(c.Room()) {
-			if cl.CID() == cid {
-				cl.AddMute(mute, dur)
-				srv.sendServerMessage(cl, "You have been muted%s for %s for the reason: %s", from, args[1], reason)
-				if err := srv.db.AddMute(cl.IPID(), cl.Ident(), reason, c.Username(), dur); err != nil {
-					srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
-				}
-				return fmt.Sprintf("Successfully muted client with CID %v for %s.", cid, args[1]), true, false
-			}
-		}
-		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
-
-	case IPID:
-		ipid := args[0]
-		toMute := srv.getByIPID(ipid)
-		if toMute == nil {
-			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
-		}
-		for _, cl := range toMute {
-			cl.AddMute(mute, dur)
-			srv.sendServerMessage(cl, "You have been muted from%s for %s for the reason: %s", from, args[1], reason)
-		}
-		if err := srv.db.AddMute(ipid, toMute[0].Ident(), reason, c.Username(), dur); err != nil {
-			srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
-		}
-		return fmt.Sprintf("Successfully muted clients with IPID %v for %s.", ipid, args[1]), true, false
+	targets, err := srv.getTargets(c, t, args[0:1])
+	if err != nil {
+		return err.Error(), false, false
 	}
 
-	// unreachable
-	return unreachableMsg, false, false
+	var msg strings.Builder
+	var muted strings.Builder
+	muted.WriteString("Successfully muted ")
+	first := true
+	for _, cl := range targets {
+		// cannot mute a client that has the same or more privileges than you
+		if c.Perms().Subset(cl.Perms()) {
+			msg.WriteString(fmt.Sprintf("Can't mute %s, they have the same privileges as you, or more.\n", cl.ShortString()))
+			continue
+		}
+
+		cl.AddMute(mute, dur)
+		srv.sendServerMessage(cl, "You have been muted%s for %s for: %s", from, args[1], reason)
+
+		if err := srv.db.AddMute(cl.IPID(), cl.Ident(), reason, c.Username(), dur); err != nil {
+			srv.logger.Warnf("Couldn't add mute to the database (%s).", err)
+		}
+
+		if first {
+			muted.WriteString(fmt.Sprintf("%v", cl.ShortString()))
+			first = false
+		} else {
+			muted.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
+		}
+	}
+
+	if first { // if this is still true, couldn't mute anyone
+		msg.WriteString("Couldn't mute any client.")
+		return msg.String(), false, false
+	}
+	muted.WriteString(fmt.Sprintf("%s for %s.", from, args[1]))
+	msg.WriteString(muted.String())
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdUnmute(c *client.Client, args []string) (string, bool, bool) {
@@ -329,68 +314,48 @@ func (srv *SCServer) cmdUnmute(c *client.Client, args []string) (string, bool, b
 		unmute = client.MutedAll
 		from = ""
 	}
+
 	// now, check for a target type. if specified, consume an argument
-	var target targetType
-	target = parseTarget(args[0])
-	if target != Default {
+	var t targetType
+	t = parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
-	}
-	// now the next argument is the ID
-	switch target {
-	case Default:
-		fallthrough
-	case UID:
-		uid, err := strconv.Atoi(args[0])
-		if err != nil {
-			// We send the usage here, in case the first argument was gibberish.
-			return fmt.Sprintf("'%v' is not a valid UID.", args[1]), false, true
-		}
-		toUnmute := srv.getByUID(uid)
-		if toUnmute == nil {
-			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
-		}
-		toUnmute.RemoveMute(unmute)
-		srv.sendServerMessage(toUnmute, "You have been unmuted%s.", from)
-		return fmt.Sprintf("Successfully unmuted client with UID %v.", uid), true, false
-
-	case CID:
-		cid, err := strconv.Atoi(args[0])
-		// TODO: check for Spectator?
-		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[1]), false, false
-		}
-		for _, cl := range srv.getClientsInRoom(c.Room()) {
-			if cl.CID() == cid {
-				cl.RemoveMute(unmute)
-				srv.sendServerMessage(cl, "You have been unmuted%s.", from)
-				return fmt.Sprintf("Successfully unmuted client with CID %v.", cid), true, false
-			}
-		}
-		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
-
-	case IPID:
-		ipid := args[0]
-		toMute := srv.getByIPID(ipid)
-		if toMute == nil {
-			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
-		}
-		for _, cl := range toMute {
-			cl.RemoveMute(unmute)
-			srv.sendServerMessage(cl, "You have been unmuted%s.", from)
-		}
-		return fmt.Sprintf("Successfully unmuted clients with IPID %v.", ipid), true, false
+	} else {
+		t = UID
 	}
 
-	// unreachable
-	return unreachableMsg, false, false
+	// now the next argument is ID
+	targets, err := srv.getTargets(c, t, args[0:1])
+	if err != nil {
+		return err.Error(), false, false
+	}
+
+	var unmuted strings.Builder
+	unmuted.WriteString("Successfully unmuted ")
+	first := true
+	for _, cl := range targets {
+		cl.RemoveMute(unmute)
+		srv.sendServerMessage(cl, "You have been unmuted%s.", from)
+
+		if first {
+			unmuted.WriteString(fmt.Sprintf("%v", cl.ShortString()))
+			first = false
+		} else {
+			unmuted.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
+		}
+	}
+	unmuted.WriteString(fmt.Sprintf("%s.", from))
+	return unmuted.String(), true, false
 }
 
 func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool, bool) {
 	// check if target type is specified. if it is, consume an argument
-	var target targetType
-	target = parseTarget(args[0])
-	if target != Default {
+	var t targetType
+	t = parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
+	} else {
+		t = UID
 	}
 
 	// now the next 2 arguments are ID, and optionally reason
@@ -401,108 +366,59 @@ func (srv *SCServer) cmdKick(c *client.Client, args []string) (string, bool, boo
 		reason = strings.Join(args[1:], " ")
 	}
 
-	switch target {
-	case Default:
-		fallthrough
-	case UID:
-		uid, err := strconv.Atoi(args[0])
-		if err != nil {
-			// We send the usage here, in case the first argument was gibberish.
-			return fmt.Sprintf("'%v' is not a valid UID.", args[0]), false, true
-		}
-		toKick := srv.getByUID(uid)
-		if toKick == nil {
-			return fmt.Sprintf("No client with UID '%v'.", uid), false, false
-		}
-		if err := srv.db.AddKick(toKick.IPID(), toKick.Ident(), reason, c.Username()); err != nil {
-			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
-		}
-		srv.kickClient(toKick, reason)
-		return fmt.Sprintf("Successfully kicked client with UID %v.", uid), true, false
-
-	case CID:
-		cid, err := strconv.Atoi(args[0])
-		// TODO: check for Spectator?
-		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false, false
-		}
-		for _, cl := range srv.getClientsInRoom(c.Room()) {
-			if cl.CID() == cid {
-				srv.kickClient(cl, reason)
-				if err := srv.db.AddKick(cl.IPID(), cl.Ident(), reason, c.Username()); err != nil {
-					srv.logger.Warnf("Couldn't add kick to the database: %s", err)
-				}
-				return fmt.Sprintf("Successfully kicked client with CID %v.", cid), true, false
-			}
-		}
-		return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
-
-	case IPID:
-		ipid := args[0]
-		toKick := srv.getByIPID(ipid)
-		if toKick == nil {
-			return fmt.Sprintf("No client with IPID '%v'.", ipid), false, false
-		}
-		for _, cl := range toKick {
-			srv.kickClient(cl, reason)
-		}
-		if err := srv.db.AddKick(ipid, toKick[0].Ident(), reason, c.Username()); err != nil {
-			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
-		}
-		return fmt.Sprintf("Successfully kicked clients with IPID %v.", ipid), true, false
+	targets, err := srv.getTargets(c, t, args[0:1])
+	if err != nil {
+		return err.Error(), false, false
 	}
 
-	// unreachable
-	return unreachableMsg, false, false
+	var msg strings.Builder
+	var kicked strings.Builder
+	kicked.WriteString("Successfully kicked ")
+	first := true
+	for _, cl := range targets {
+		// cannot kick a client that has the same or more privileges than you
+		if c.Perms().Subset(cl.Perms()) {
+			msg.WriteString(fmt.Sprintf("Can't kick %s, they have the same privileges as you, or more.\n", cl.ShortString()))
+			continue
+		}
+
+		srv.kickClient(cl, reason)
+		if err := srv.db.AddKick(cl.IPID(), cl.Ident(), reason, c.Username()); err != nil {
+			srv.logger.Warnf("Couldn't add kick to the database: %s", err)
+		}
+
+		if first {
+			kicked.WriteString(fmt.Sprintf("%v", cl.ShortString()))
+			first = false
+		} else {
+			kicked.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
+		}
+	}
+
+	if first { // if this is true, couldn't kick anyone
+		msg.WriteString("Couldn't kick any client.")
+		return msg.String(), false, false
+	}
+	kicked.WriteString(fmt.Sprintf(" for reason: %s.", reason))
+	msg.WriteString(kicked.String())
+
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool) {
 	// TODO: add flag for explicitly banned offline targets
 	// check if target type is specified. if it is, consume an argument.
-	var target targetType
-	target = parseTarget(args[0])
-	if target != Default {
+	var t targetType
+	t = parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
+	} else {
+		t = UID
 	}
 
 	// now the next 3 arguments are ID, duration, and reason
-	var ipid string
-	switch target {
-	case Default:
-		fallthrough
-	case IPID:
-		ipid = args[0]
 
-	case CID:
-		cid, err := strconv.Atoi(args[0])
-		// TODO: check for Spectator?
-		if err != nil {
-			return fmt.Sprintf("'%v' is not a valid CID.", args[0]), false, false
-		}
-		found := false
-		for _, cl := range srv.getClientsInRoom(c.Room()) {
-			if cl.CID() == cid {
-				found = true
-				ipid = cl.IPID()
-			}
-		}
-		if !found {
-			return fmt.Sprintf("No client with CID %v in this room.", cid), false, false
-		}
-
-	case UID:
-		uid, err := strconv.Atoi(args[0])
-		if err != nil {
-			return fmt.Sprintf("'%s' is not a valid UID.", args[0]), false, false
-		}
-		cl := srv.getByUID(uid)
-		if cl == nil {
-			return fmt.Sprintf("No client with UID %v.", uid), false, false
-		}
-		ipid = cl.IPID()
-	}
-
-	// TODO: default duration?
+	// TODO: default duration? needs a duration flag, probs
 	var dur time.Duration
 	var err error
 	if args[1] == "perma" {
@@ -513,21 +429,40 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 
 	reason := strings.Join(args[2:], " ")
 
-	var outMsg string
-	toBan := srv.getByIPID(ipid)
-	if toBan == nil {
-		outMsg += fmt.Sprintf("note: No clients currently online with IPID %s, adding ban record with only IPID.\n", ipid)
+	var ipid string
+	targets, err := srv.getTargets(c, t, args[0:1])
+	if err != nil {
+		if t != IPID {
+			return err.Error(), false, false
+		}
+		// No client online with the passed IPID - we'll add a ban record.
+		// TODO: add a flag for this, to avoid people getting banned by typos
+		var msg strings.Builder
+		ipid = args[0]
+		msg.WriteString(fmt.Sprintf("No clients currently online with IPID %s. Adding a ban record for this IPID.\n", args))
 		if err := srv.db.AddBan(ipid, "", reason, c.Username(), dur); err != nil {
 			srv.logger.Warnf("Couldn't add ban (%s).", err)
 			return "Database error. Warn the host!", false, false
 		}
-		outMsg += fmt.Sprintf("Successfully banned IPID %s.", ipid)
-		return outMsg, true, false
+		msg.WriteString(fmt.Sprintf("Successfully banned IPID %s.", ipid))
+		return msg.String(), true, false
 	}
+	ipid = targets[0].IPID() // not empty if we got here
 
 	banMsg := fmt.Sprintf("You have been banned. Reason: %s (until %s)", reason, time.Now().Add(dur).UTC().Format(time.UnixDate))
-	var hdids []string
-	for _, cl := range toBan {
+	var hdids []string // we don't want to add repeat HDIDs to the ban records
+	var msg strings.Builder
+	var banned strings.Builder
+	banned.WriteString("Successfully banned ")
+	first := true
+	for _, cl := range targets {
+		// can't ban clients with the same or more permissions
+		if c.Perms().Subset(cl.Perms()) {
+			msg.WriteString(fmt.Sprintf("Can't ban %s, they have the same privileges as you, or more.\n", cl.ShortString()))
+			continue
+		}
+
+		// check for new HDID
 		newHDID := true
 		for _, hdid := range hdids {
 			if cl.Ident() == hdid {
@@ -537,17 +472,33 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 		if newHDID {
 			hdids = append(hdids, cl.Ident())
 		}
-		srv.kickClient(cl, banMsg)
-	}
 
-	for _, hdid := range hdids {
-		if err := srv.db.AddBan(ipid, hdid, reason, c.Username(), dur); err != nil {
-			srv.logger.Warnf("Couldn't add ban (%s).", err)
-			return "Database error. Warn the host!", false, false
+		srv.kickClient(cl, banMsg)
+
+		if first {
+			banned.WriteString(fmt.Sprintf("%v", c.ShortString()))
+			first = false
+		} else {
+			banned.WriteString(fmt.Sprintf(", %v", c.ShortString()))
 		}
 	}
 
-	return fmt.Sprintf("Successfully banned IPID %s and %v HDIDs.", ipid, len(hdids)), true, false
+	if first { // if this is still true, couldn't ban anyone
+		msg.WriteString("Couldn't ban any client.")
+		return msg.String(), false, false
+	}
+	banned.WriteString(fmt.Sprintf(" for %s for reason: %s.", duration.String(dur), reason))
+
+	for _, hdid := range hdids {
+		if err := srv.db.AddBan(targets[0].IPID(), hdid, reason, c.Username(), dur); err != nil {
+			srv.logger.Warnf("Couldn't add ban (%s).", err)
+			msg.WriteString("Database error. Warn the host!")
+			return msg.String(), false, false
+		}
+	}
+
+	msg.WriteString(banned.String())
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool, bool) {
@@ -608,7 +559,7 @@ func (srv *SCServer) cmdManage(c *client.Client, args []string) (string, bool, b
 	if len(args) == 0 {
 		// promoting self
 		if len(c.Room().Managers()) != 0 && !c.HasPerms(perms.BypassLocks) {
-			return "This room already has a manager.", false, false
+			return "This room already has a manager. Ask them to promote you.", false, false
 		}
 		if !c.Room().AllowManagers() && !c.HasPerms(perms.BypassLocks) {
 			return "Promoting to manager is not allowed in this room.", false, false
@@ -629,86 +580,54 @@ func (srv *SCServer) cmdManage(c *client.Client, args []string) (string, bool, b
 	}
 
 	// check if first argument is target type. if it is, consume it
-	target := parseTarget(args[0])
-	if target != Default {
+	t := parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
+	} else {
+		t = UID
 	}
-	// now the only arguments left are the ids
-	switch target {
-	case Default:
-		fallthrough
-	case UID:
-		var uids []int
-		for _, arg := range args {
-			uid, err := strconv.Atoi(arg)
-			if err != nil {
-				return fmt.Sprintf("'%v' is not a valid UID.", uid), false, true
-			}
-			uids = append(uids, uid)
-		}
-
-		var outMsg string
-		var goodUIDs string
-		for _, uid := range uids {
-			cl := srv.getByUID(uid)
-			if cl == nil {
-				outMsg += fmt.Sprintf("No client with UID %v in the server.\n", uid)
-				continue
-			} else if c.Room() != cl.Room() {
-				outMsg += fmt.Sprintf("No client with UID %v in this room.\n", uid)
-				continue
-			} else if c.Room().IsManager(cl.UID()) {
-				outMsg += fmt.Sprintf("UID %v is already a manager.\n", uid)
-				continue
-			}
-			goodUIDs += fmt.Sprintf("%v, ", uid)
-			cl.AddRole(srv.mgrRole)
-			c.Room().AddManager(uid)
-			srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
-		}
-		outMsg += fmt.Sprintf("Successfully promoted by UID: %s.", goodUIDs[:len(goodUIDs)-2])
-		return outMsg, true, false
-
-	case CID:
-		var cids []int
-		for _, arg := range args {
-			cid, err := strconv.Atoi(arg)
-			if err != nil {
-				return fmt.Sprintf("'%v' is not a valid CID.", cid), false, false
-			}
-			cids = append(cids, cid)
-		}
-
-		var outMsg string
-		var goodCIDs string
-		for _, cid := range cids {
-			found := false
-			for _, cl := range srv.getClientsInRoom(c.Room()) {
-				if cl.CID() == cid {
-					found = true
-					if c.Room().IsManager(cl.UID()) {
-						outMsg += fmt.Sprintf("CID %v is already a manager.\n", cid)
-					}
-					goodCIDs += fmt.Sprintf("%v, ", cid)
-					c.Room().AddManager(cl.UID())
-					cl.AddRole(srv.mgrRole)
-					srv.sendServerMessageToRoom(cl.Room(), "%s is no longer managing this room.", cl.ShortString())
-					break
-				}
-			}
-			if !found {
-				outMsg += fmt.Sprintf("No client with CID %v in this room.\n", cid)
-			}
-		}
-		outMsg += fmt.Sprintf("Successfully promoted by CID: %s.", goodCIDs[:len(goodCIDs)-2])
-		return outMsg, true, false
-
-	case IPID:
+	if t == IPID {
 		return "Can't promote by IPID.", false, true
 	}
 
-	// unreachable
-	return unreachableMsg, false, false
+	// now the only arguments left are the ids
+	targets, err := srv.getTargets(c, t, args[:])
+	if err != nil {
+		return err.Error(), false, false
+	}
+
+	var msg strings.Builder
+	var promoted strings.Builder
+	promoted.WriteString("Successfully promoted ")
+	first := true
+	for _, cl := range targets {
+		if cl.Room() != c.Room() {
+			msg.WriteString(fmt.Sprintf("%s is not in this room. Skipping.\n", cl.ShortString()))
+			continue
+		}
+		if cl.Room().IsManager(cl.UID()) {
+			msg.WriteString(fmt.Sprintf("%s is already a manager in this room. Skipping.\n", cl.ShortString()))
+			continue
+		}
+		cl.AddRole(srv.mgrRole)
+		cl.Room().AddManager(cl.UID())
+		srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
+
+		if first {
+			promoted.WriteString(fmt.Sprintf("%v", c.ShortString()))
+		} else {
+			promoted.WriteString(fmt.Sprintf(", %v", c.ShortString()))
+		}
+	}
+	promoted.WriteString(".")
+
+	if first { // if this is still true, couldn't promote anyone
+		msg.WriteString("Couldn't promote any client.")
+		return msg.String(), false, false
+	}
+
+	msg.WriteString(promoted.String())
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdUnmanage(c *client.Client, args []string) (string, bool, bool) {
@@ -729,87 +648,52 @@ func (srv *SCServer) cmdUnmanage(c *client.Client, args []string) (string, bool,
 		return "You must be a manager yourself to demote others.", false, false
 	}
 
-	// check if first argument is target type. if it is, consume it
-	target := parseTarget(args[0])
-	if target != Default {
+	// check if first argument is t type. if it is, consume it
+	t := parseTarget(args[0])
+	if t != Default {
 		args = args[1:]
+	} else {
+		t = UID
 	}
+	if t == IPID {
+		return "Cannot demote by IPID", false, true
+	}
+
 	// now the only arguments left are the ids
-	switch target {
-	case Default:
-		fallthrough
-	case UID:
-		var uids []int
-		for _, arg := range args {
-			uid, err := strconv.Atoi(arg)
-			if err != nil {
-				return fmt.Sprintf("'%v' is not a valid UID.", uid), false, true
-			}
-			uids = append(uids, uid)
-		}
-
-		var outMsg string
-		var goodUIDs string
-		for _, uid := range uids {
-			cl := srv.getByUID(uid)
-			if cl == nil {
-				outMsg += fmt.Sprintf("No client with UID %v in the server.\n", uid)
-				continue
-			} else if c.Room() != cl.Room() {
-				outMsg += fmt.Sprintf("No client with UID %v in this room.\n", uid)
-				continue
-			} else if !c.Room().IsManager(cl.UID()) {
-				outMsg += fmt.Sprintf("UID %v is not a manager.\n", uid)
-				continue
-			}
-			goodUIDs += fmt.Sprintf("%v, ", uid)
-			cl.RemoveRole(srv.mgrRole)
-			c.Room().RemoveManager(uid)
-			srv.sendServerMessageToRoom(cl.Room(), "%s is no longer managing this room.", cl.ShortString())
-		}
-		outMsg += fmt.Sprintf("Successfully demoted by UID: %s.", goodUIDs[:len(goodUIDs)-2])
-		return outMsg, true, false
-
-	case CID:
-		var cids []int
-		for _, arg := range args {
-			cid, err := strconv.Atoi(arg)
-			if err != nil {
-				return fmt.Sprintf("'%v' is not a valid CID.", cid), false, false
-			}
-			cids = append(cids, cid)
-		}
-
-		var outMsg string
-		var goodCIDs string
-		for _, cid := range cids {
-			found := false
-			for _, cl := range srv.getClientsInRoom(c.Room()) {
-				if cl.CID() == cid {
-					found = true
-					if !c.Room().IsManager(cl.UID()) {
-						outMsg += fmt.Sprintf("CID %v is not a manager.\n", cid)
-					}
-					goodCIDs += fmt.Sprintf("%v, ", cid)
-					c.Room().RemoveManager(cl.UID())
-					cl.RemoveRole(srv.mgrRole)
-					srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
-					break
-				}
-			}
-			if !found {
-				outMsg += fmt.Sprintf("No client with CID %v in this room.\n", cid)
-			}
-		}
-		outMsg += fmt.Sprintf("Successfully demoted by CID: %s.", goodCIDs[:len(goodCIDs)-2])
-		return outMsg, true, false
-
-	case IPID:
-		return "Can't demote by IPID.", false, true
+	targets, err := srv.getTargets(c, t, args[:])
+	if err != nil {
+		return err.Error(), false, false
 	}
 
-	// unreachable
-	return unreachableMsg, false, false
+	var msg strings.Builder
+	var demoted strings.Builder
+	demoted.WriteString("Successfully demoted ")
+	first := true
+	for _, cl := range targets {
+		if !c.Room().IsManager(cl.UID()) {
+			msg.WriteString(fmt.Sprintf("%s is not a manager in this room.\n", cl.ShortString()))
+			continue
+		}
+
+		cl.RemoveRole(srv.mgrRole)
+		c.Room().RemoveManager(cl.UID())
+		srv.sendServerMessageToRoom(cl.Room(), "%s is no longer managing this room.", cl.ShortString())
+
+		if first {
+			demoted.WriteString(fmt.Sprintf("%v", cl.ShortString()))
+		} else {
+			demoted.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
+		}
+	}
+	demoted.WriteString(".")
+
+	if first { // if this is still true, couldn't promote anyone
+		msg.WriteString("Couldn't demote any client.")
+		return msg.String(), false, false
+	}
+
+	msg.WriteString(demoted.String())
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdBackground(c *client.Client, args []string) (string, bool, bool) {
@@ -828,4 +712,53 @@ func parseTarget(s string) targetType {
 	default:
 		return Default
 	}
+}
+
+// Gets the clients targeted by a command.
+func (srv *SCServer) getTargets(c *client.Client, t targetType, ids []string) ([]*client.Client, error) {
+	var clients []*client.Client
+	switch t {
+	case UID:
+		for _, id := range ids {
+			uid, err := strconv.Atoi(id)
+			if err != nil {
+				return nil, fmt.Errorf("'%v' is not a valid UID.", id)
+			}
+			cl := srv.getByUID(uid)
+			if c == nil {
+				return nil, fmt.Errorf("No client with UID %v.", uid)
+			}
+			clients = append(clients, cl)
+		}
+	case CID:
+		cls := srv.getClientsInRoom(c.Room())
+		for _, id := range ids {
+			cid, err := strconv.Atoi(id)
+			if err != nil {
+				return nil, fmt.Errorf("'%v' is not a valid UID.", cid)
+			}
+			var found bool
+			for _, cl := range cls {
+				if cl.CID() == cid {
+					found = true
+					clients = append(clients, cl)
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("No client with CID %v in this room.", cid)
+			}
+		}
+	case IPID:
+		for _, ipid := range ids {
+			cl := srv.getByIPID(ipid)
+			if cl == nil {
+				return nil, fmt.Errorf("No client with IPID '%s'.", ipid)
+			}
+			clients = append(clients, cl...)
+		}
+	}
+	if len(clients) == 0 {
+		return nil, fmt.Errorf("No targets found.")
+	}
+	return clients, nil
 }

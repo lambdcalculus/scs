@@ -101,3 +101,10 @@ func MakeRoles(confs *config.Roles) ([]Role, error) {
 	}
 	return roles, nil
 }
+
+// Checks if the permissions in `p` are a (non-strict) subset of the ones in `q`.
+func (p Mask) Subset(q Mask) bool {
+    // time for some boolean logic
+    // "p implies q" is equivalent to "q or not p", therefore...
+    return q | ^p == All
+}
