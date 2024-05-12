@@ -30,9 +30,6 @@ const (
 // For commands that can optionally be given a 'reason' argument.
 const noReason string = "No reason given."
 
-// In case code that should be unreachable is somehow reached.
-const unreachableMsg string = "You shouldn't see this message! If you do, please tell the server developer."
-
 // A cmdFunc attempts to execute a command with the passed args. It returns whether
 // a message to send the client who issued the command, and two bools: one indicating
 // whether the command was successful, and one indicating whether the usage should be sent.
@@ -133,12 +130,6 @@ func (srv *SCServer) handleCommand(c *client.Client, name string, args []string)
 	} else {
 		c.Room().LogEvent(room.EventFail, "%s tried to run command '/%s %s' but failed (%s)",
 			c.LongString(), name, strings.Join(args, " "), msg)
-	}
-
-	// just in case, lmao
-	if msg == unreachableMsg {
-		srv.logger.Warnf("%s reached supposedly unreachable code with command '/%s %s'.",
-			c.LongString(), name, strings.Join(args, " "))
 	}
 
 	var reply string
