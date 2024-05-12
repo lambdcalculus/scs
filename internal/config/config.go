@@ -85,6 +85,8 @@ func RoomDefault() *Room {
 	return &Room{
 		Name:            "Unknown",
 		DefaultAmbiance: "~stop.mp3",
+		LockBg:          true,
+		LockAmbiance:    true,
 		CharLists:       []string{"all"},
 		SongCategories:  []string{"all"},
 		Sides:           []string{"wit", "def", "pro", "jud", "hld", "hlp"},

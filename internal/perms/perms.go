@@ -28,8 +28,8 @@ const (
 	Status      // Permission to change the room's status.
 	Lock        // Permission to change the room's lock.
 	Description // Permission to change the room's description.
-	Background  // Permission to change the room's background (does not bypass background lock).
-	Ambiance    // Permission to change the room's ambiance track (does not bypass ambiance lock).
+	Background  // Permission to change the room's background (necessary when there is a background lock).
+	Ambiance    // Permission to change the room's ambiance track (necessary when there is an ambiance lock).
 
 	// Admin stuff.
 
