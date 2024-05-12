@@ -208,10 +208,11 @@ func (srv *SCServer) kickClient(c *client.Client, reason string) {
 // Disconnects and cleans up a client.
 func (srv *SCServer) removeClient(c *client.Client) {
 	if c.Room() != nil {
+        r := c.Room()
 		srv.moveClient(c, nil)
 		// Don't send disconnect message if someone only got to the character list.
 		if c.CharPicked() {
-			srv.sendServerMessageToRoom(c.Room(), fmt.Sprintf("%s has disconnected.", c.ShortString()))
+			srv.sendServerMessageToRoom(r, fmt.Sprintf("%s has disconnected.", c.ShortString()))
 		}
 	}
 	if c.UID() != uid.Unjoined {
