@@ -374,6 +374,27 @@ func (r *Room) Background() string {
 	return r.bg
 }
 
+// Sets the background of the room.
+func (r *Room) SetBackground(bg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.bg = bg
+}
+
+// Returns whether the background is locked.
+func (r *Room) BgLock() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lockBg
+}
+
+// Sets the background lock.
+func (r *Room) SetBgLock (lock bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lockBg = lock
+}
+
 // Returns the prosecution/defense HP.
 func (r *Room) Bar(bar packets.BarSelect) packets.BarHP {
 	r.mu.Lock()
@@ -539,6 +560,20 @@ func (r *Room) SetAmbiance(s string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ambiance = s
+}
+
+// Returns whether the ambiance is locked.
+func (r *Room) AmbLock() bool {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    return r.lockAmb
+}
+
+// Sets the background lock.
+func (r *Room) SetAmbLock (lock bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lockAmb = lock
 }
 
 // Returns the list of adjacent rooms.

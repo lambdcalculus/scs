@@ -76,6 +76,11 @@ func Init(path string) (*Database, error) {
 		return nil, fmt.Errorf("db: Couldn't connect to database (%w)", err)
 	}
 
+	_, err = db.Exec(`PRAGMA foreign_keys = ON`)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't set foreign_keys to ON (%w).", err)
+	}
+
 	// TODO: users table?
 
 	_, err = db.Exec(`
@@ -131,6 +136,18 @@ func Init(path string) (*Database, error) {
     )`)
 	if err != nil {
 		return nil, fmt.Errorf("db: Couldn't create bans table (%w)", err)
+	}
+
+	_, err = db.Exec(`
+    CREATE TABLE IF NOT EXISTS unbans(
+        unban_id  INTEGER PRIMARY KEY,
+        ban_id    INTEGER NOT NULL,
+        moderator TEXT NOT NULL,
+
+        FOREIGN KEY(ban_id) REFERENCES bans(ban_id)
+    )`)
+	if err != nil {
+		return nil, fmt.Errorf("db: Couldn't create unbans table (%w)", err)
 	}
 
 	return &Database{db: db}, nil
@@ -335,8 +352,9 @@ func (d *Database) CheckBanned(ipid string, hdid string) (bool, []Ban, error) {
 	return banned, validBans, nil
 }
 
-// Nullifies a ban by setting its end time to the current time.
-func (d *Database) NullBan(id int) error {
+// Nullifies a ban by setting its end time to the current time, and adds
+// a corresponding unban to the unbans table.
+func (d *Database) NullBan(id int, moderator string) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -349,20 +367,30 @@ func (d *Database) NullBan(id int) error {
 	if err != nil {
 		return fmt.Errorf("db: Couldn't null ban (%w)", err)
 	}
+
+	_, err = d.db.Exec(`
+    INSERT INTO unbans
+        (ban_id, moderator)
+    VALUES
+        (?, ?)`,
+		id, moderator)
+	if err != nil {
+		return fmt.Errorf("db: Couldn't add unban (%w)", err)
+	}
 	return nil
 }
 
-// Nullifies all bans for the passed IPID and HDID.
-func (d *Database) NullBans(ipid string, hdid string) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	bans, err := d.GetBans(ipid, hdid)
+// Nullifies all bans for the passed IPID and HDID, and adds the corresponding unbans.
+func (d *Database) NullBans(ipid string, hdid string, moderator string) error {
+	banned, bans, err := d.CheckBanned(ipid, hdid)
 	if err != nil {
 		return fmt.Errorf("db: Couldn't get bans (%w)", err)
 	}
+	if !banned {
+		return nil
+	}
 	for _, ban := range bans {
-		if err := d.NullBan(ban.BanID); err != nil {
+		if err := d.NullBan(ban.BanID, moderator); err != nil {
 			return fmt.Errorf("db: Couldn't null ban of ID %v (%w)", ban.BanID, err)
 		}
 	}
@@ -371,19 +399,19 @@ func (d *Database) NullBans(ipid string, hdid string) error {
 
 // Gets the record (all mutes, kicks and bans) for the passed IPID or HDID.
 func (d *Database) GetRecord(ipid string, hdid string) (Record, error) {
-    mutes, err := d.GetMutes(ipid, hdid)
-    if err != nil {
-        return Record{}, err
-    }
-    kicks, err := d.GetKicks(ipid, hdid)
-    if err != nil {
-        return Record{}, err
-    }
-    bans, err := d.GetBans(ipid, hdid)
-    if err != nil {
-        return Record{}, err
-    }
-    return Record{Mutes: mutes, Kicks: kicks, Bans: bans}, nil
+	mutes, err := d.GetMutes(ipid, hdid)
+	if err != nil {
+		return Record{}, err
+	}
+	kicks, err := d.GetKicks(ipid, hdid)
+	if err != nil {
+		return Record{}, err
+	}
+	bans, err := d.GetBans(ipid, hdid)
+	if err != nil {
+		return Record{}, err
+	}
+	return Record{Mutes: mutes, Kicks: kicks, Bans: bans}, nil
 }
 
 // Adds a new user that can authenticate to the passed role.

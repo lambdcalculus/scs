@@ -47,28 +47,55 @@ var cmdMap map[string]cmdHandler
 
 func init() {
 	cmdMap = map[string]cmdHandler{
+		// general
 		"help": {(*SCServer).cmdHelp, 0, perms.None,
 			"/help [command]",
 			"Shows detailed usage of a command, or the list of commands if no command is passed."},
+		// /about
+		// /motd
+		// /kickself
 
 		// moderation
 		"login": {(*SCServer).cmdLogin, 2, perms.None,
 			"/login <username> <password>",
 			"Attempts to authenticate with the passed username and password."},
+		"logout": {(*SCServer).cmdLogout, 0, perms.None,
+			"/logout",
+			"Logs out from authenticated roles."},
 		"mute": {(*SCServer).cmdMute, 2, perms.Mute,
 			"/mute <uid> <duration> [reason...]\n" +
 				"/mute <'ic'|'ooc'|'jud'|'music'|'all'> <uid> <duration> [reason...]\n" +
 				"/mute <'cid'|'uid'|'ipid'> <id> <duration> [reason...]\n" +
 				"/mute <'ic'|'ooc'|'jud'|'music'|'all'> <'cid'|'uid'|'ipid'> <id> <duration> [reason...]",
-			"Mutes a user for the specified duration with an optional reason. Mutes user in all of IC/OOC/judge/music unless otherwise specified. Mutes by UID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Note: if muting by IPID, all clients with that IPID will be muted."},
+			"Mutes a user for the specified duration with an optional reason. Mutes user in all of IC/OOC/judge/music unless otherwise specified. Mutes by UID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Note: if muting by IPID, all clients with that IPID will be muted.\n" +
+				"Example usage:\n" +
+				"\"/mute 2 1h spamming a lot\" (mutes UID 2 for 1 hour for 'spamming a lot')\n" +
+				"\"/mute ic ipid 1Il05w 20min spamming\" (mutes IPID 1Il05w in IC chat for 20 minutes for 'spamming')"},
+		"unmute": {(*SCServer).cmdUnmute, 1, perms.Mute,
+			"/unmute <uid>\n" +
+				"/unmute <'ic'|'ooc'|'jud'|'music'|'all'> <uid>\n" +
+				"/unmute <'cid'|'uid'|'ipid'> <id>\n" +
+				"/unmute <'ic'|'ooc'|'jud'|'music'|'all'> <'cid'|'uid'|'ipid'> <id>",
+			"Unmutes a user. Targets by UID unless otherwise specified. Removes all mutes unless otherwise specified. Note: if unmuting by IPID, all clients with that IPID will be unmuted."},
 		"kick": {(*SCServer).cmdKick, 1, perms.Kick,
 			"/kick <uid> [reason...]\n" +
 				"/kick <'cid'|'uid'|'ipid'> <id> [reason...]",
-			"Kicks a user with an optional reason. Kicks by UID unless otherwise specified. Note: if kicking by IPID, all clients with that IPID will be kicked."},
+			"Kicks a user with an optional reason. Kicks by UID unless otherwise specified. Note: if kicking by IPID, all clients with that IPID will be kicked.\n" +
+				"Example usage:\n" +
+				"\"/kick 2 dumb and stupid\" (kicks UID 2 for reason 'dump and stupid')\n" +
+				"\"/kick ipid 1Il05w dumb\" (kicks IPID 1Il05w for reason 'dumb')"},
+		// TODO: default ban time?
 		"ban": {(*SCServer).cmdBan, 3, perms.Ban,
-			"/ban <ipid> <duration> <reason...>\n" +
+			"/ban <ipid> <duration|'perma'> <reason...>\n" +
 				"/ban <'cid'|'uid'|'ipid'> <id> <duration> <reason...>",
-			"Bans a user for the specified duration. Reason is required. Bans by IPID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Duration can be 'perma' for permanent ban."},
+			"Bans a user for the specified duration. Reason is required. Bans by IPID unless otherwise specified. Duration should be in a format like '2h30m' or '3d12h'. Duration can be 'perma' for permanent ban.\n" +
+				"Example usage:\n" +
+				"\"/ban 1Il05w 3d spamming a lot\" (bans IPID 1Il05w for 3 days for 'spamming a lot')\n" +
+				"\"/ban uid 3 3d spamming a lot\" (bans UID 3 for 3 days for 'spamming a lot')"},
+		"unban": {(*SCServer).cmdUnban, 1, perms.Unban,
+			"/unban <ipid>",
+			"Nulls all bans related to the passed IPID."},
+		// /audit
 
 		// rooms
 		"get": {(*SCServer).cmdGet, 1, perms.None,
@@ -85,15 +112,15 @@ func init() {
 			"/unmanage [uids...]\n" +
 				"/unmanage <'cid'|'uid'> <ids...>",
 			"Demotes user from manager. Only managers can use this command. Will use UID to demote others unless otherwise specified."},
-		"bg": {(*SCServer).cmdBackground, 1, perms.Background,
+		"bg": {(*SCServer).cmdBg, 1, perms.Background,
 			"/bg <background...>",
 			"Changes the room's background."},
-		// "ambiance": {(*SCServer).cmdAmbiance, 1, perms.Ambiance,
-		// 	"/bg <background...>",
-		// 	"Changes the room's ambiance."},
+		"ambiance": {(*SCServer).cmdAmbiance, 1, perms.Ambiance,
+			"/ambiance <ambiance...>",
+			"Changes the room's ambiance."},
 		// /lock
 		// /unlock
-		// /toggle
+		// /toggle (for bg/amb locks and other toggles)
 		// /invite
 		// /uninvite
 		// /play
@@ -184,6 +211,34 @@ func (srv *SCServer) cmdLogin(c *client.Client, args []string) (string, bool, bo
 		}
 	}
 	return fmt.Sprintf("Was able to authenticate, but role '%v' doesn't exist.", role), false, false
+}
+
+func (srv *SCServer) cmdLogout(c *client.Client, args []string) (string, bool, bool) {
+	if len(c.Roles()) == 0 {
+		return "You aren't logged in as any roles!", false, false
+	}
+
+	var msg strings.Builder
+	first := true
+	for _, r := range c.Roles() {
+		if first {
+			first = false
+		} else {
+			msg.WriteString("\n")
+		}
+
+		// don't demote manager role, use /manage for that
+		if r == srv.mgrRole {
+			msg.WriteString("You have a manager role, use /unmanage to remove it.")
+			continue
+		}
+		c.RemoveRole(r)
+		if first {
+
+		}
+		msg.WriteString(fmt.Sprintf("Logged out from role '%s'", r.Name))
+	}
+	return msg.String(), true, false
 }
 
 func (srv *SCServer) cmdMute(c *client.Client, args []string) (string, bool, bool) {
@@ -467,10 +522,10 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 		srv.kickClient(cl, banMsg)
 
 		if first {
-			banned.WriteString(fmt.Sprintf("%v", c.ShortString()))
+			banned.WriteString(fmt.Sprintf("%v", cl.ShortString()))
 			first = false
 		} else {
-			banned.WriteString(fmt.Sprintf(", %v", c.ShortString()))
+			banned.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
 		}
 	}
 
@@ -490,6 +545,23 @@ func (srv *SCServer) cmdBan(c *client.Client, args []string) (string, bool, bool
 
 	msg.WriteString(banned.String())
 	return msg.String(), true, false
+}
+
+func (srv *SCServer) cmdUnban(c *client.Client, args []string) (string, bool, bool) {
+	ipid := args[0]
+	banned, _, err := srv.db.CheckBanned(ipid, "")
+	if err != nil {
+		srv.logger.Warnf("Couldn't check bans (%s).", err)
+		return "Database error. Warn the host!", false, false
+	}
+	if !banned {
+		return fmt.Sprintf("IPID %s is not banned.", ipid), false, false
+	}
+	if err := srv.db.NullBans(ipid, "", c.Username()); err != nil {
+		srv.logger.Warnf("Couldn't null ban (%s).", err)
+		return "Database error. Warn the host!", false, false
+	}
+	return fmt.Sprintf("Succesfully unbanned IPID %s.", ipid), true, false
 }
 
 func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool, bool) {
@@ -605,9 +677,9 @@ func (srv *SCServer) cmdManage(c *client.Client, args []string) (string, bool, b
 		srv.sendServerMessageToRoom(cl.Room(), "%s is now managing this room.", cl.ShortString())
 
 		if first {
-			promoted.WriteString(fmt.Sprintf("%v", c.ShortString()))
+			promoted.WriteString(fmt.Sprintf("%v", cl.ShortString()))
 		} else {
-			promoted.WriteString(fmt.Sprintf(", %v", c.ShortString()))
+			promoted.WriteString(fmt.Sprintf(", %v", cl.ShortString()))
 		}
 	}
 	promoted.WriteString(".")
@@ -687,8 +759,20 @@ func (srv *SCServer) cmdUnmanage(c *client.Client, args []string) (string, bool,
 	return msg.String(), true, false
 }
 
-func (srv *SCServer) cmdBackground(c *client.Client, args []string) (string, bool, bool) {
-	return "lol", true, false
+func (srv *SCServer) cmdBg(c *client.Client, args []string) (string, bool, bool) {
+	if c.Room().BgLock() && !c.HasPerms(perms.Background) {
+		return "You do not have permission to change the background. Try promoting with /manage.", false, false
+	}
+	srv.sendServerMessageToRoom(c.Room(), "%s changed the background to '%s'.", c.ShortString(), strings.Join(args, " "))
+	return "", true, false
+}
+
+func (srv *SCServer) cmdAmbiance(c *client.Client, args []string) (string, bool, bool) {
+	if c.Room().AmbLock() && !c.HasPerms(perms.Ambiance) {
+		return "You do not have permission to change the ambiance. Try promoting with /manage first.", false, false
+	}
+	srv.sendServerMessageToRoom(c.Room(), "%s changed the ambiance to '%s'.", c.ShortString(), strings.Join(args, " "))
+	return "", true, false
 }
 
 // Parses a target. Returns Default if no matches are found.
