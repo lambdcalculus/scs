@@ -29,7 +29,6 @@ jobs:
       run: CGO_ENABLED=1 make server$SUFFIX
 
     - name: Build serverctl
-      if: matrix.os != 'windows-latest'
       shell: bash
       run: CGO_ENABLED=1 make serverctl
 

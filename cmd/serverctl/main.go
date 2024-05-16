@@ -135,7 +135,7 @@ func handleAddAuth(args []string) {
 		Role:     args[2],
 	}
 	var reply int
-	if err := client.Call("DB.AddAuth", rpcArgs, &reply); err != nil {
+	if err := client.Call("Server.AddAuth", rpcArgs, &reply); err != nil {
 		logger.Errorf("add-auth: Failed (%s).", err)
 		os.Exit(1)
 	}
@@ -148,7 +148,7 @@ func handleRmAuth(args []string) {
 		Username: args[0],
 	}
 	var reply int
-	if err := client.Call("DB.RmAuth", rpcArgs, &reply); err != nil {
+	if err := client.Call("Server.RmAuth", rpcArgs, &reply); err != nil {
 		logger.Errorf("rm-auth: Failed (%s).", err)
 		os.Exit(1)
 	}

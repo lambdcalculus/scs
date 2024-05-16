@@ -10,17 +10,14 @@ import (
 
 // Listens for local RCP connections, for usage with serverctl.
 func (srv *SCServer) listenRPC() {
-	rpc.AddAuthImpl = srv.AddAuth
-	rpc.RmAuthImpl = srv.RmAuth
-
-	s, err := rpc.NewServer(srv.config.PortRPC)
+	s, err := rpc.NewServer(srv, srv.config.PortRPC)
 	if err != nil {
 		srv.logger.Errorf("Couldn't create RPC server (%s).", err)
 		return
 	}
 
 	srv.logger.Infof("Listening RPC on port %v.", srv.config.PortRPC)
-	srv.logger.Errorf("Stopped serving RPC (%v).", s.ListenAndServe())
+	srv.logger.Errorf("Stopped serving RPC (%v).", s.HTTP.ListenAndServe())
 }
 
 // Adds an user to the auth table in the database.
