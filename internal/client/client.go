@@ -117,8 +117,9 @@ func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 	return client
 }
 
-// Makes a new client over a WebSocket connection. The client will log to the specified logger.
-func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
+// Makes a new client of the specified type over a WebSocket connection.
+// The client will log to the specified logger.
+func NewWSClient(conn *websocket.Conn, typ ClientType, log *logger.Logger) *Client {
 	// Read limit is 64KiB, just because that's the default used by the scanner on the TCP side.
 	// Can be changed later, if necessary.
 	conn.SetReadLimit(64 << 10)
@@ -127,6 +128,7 @@ func NewWSClient(conn *websocket.Conn, log *logger.Logger) *Client {
 	client := &Client{
 		wsConn:    conn,
 		addr:      conn.RemoteAddr().String(),
+		clientType: typ,
 		ipid:      ipid,
 		uid:       uid.Unjoined,
 		cid:       room.SpectatorCID,

@@ -16,6 +16,17 @@ import (
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
+var (
+    // The upgrader for WebSocket connections.
+	// TODO: set deadline for IO ops?
+	upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+        // TODO: actually check the origin
+        CheckOrigin: func(r *http.Request) bool { return true },
+	}
+)
+
 func (srv *SCServer) listenTCP() {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%v", srv.config.PortTCP))
 	if err != nil {
@@ -61,17 +72,12 @@ func (srv *SCServer) handleTCPClient(c *client.Client) {
 	}
 }
 
-var (
-	upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-	}
-)
 
 func (srv *SCServer) listenWS() {
 	mux := http.NewServeMux()
+    mux.HandleFunc("/", srv.rootEndpoint)
+    mux.HandleFunc("/GAME", srv.gameEndpoint)
 	mux.HandleFunc("/DATA", srv.dataEndpoint)
-	mux.HandleFunc("/", srv.wsEndpoint)
 	wsServer := &http.Server{
 		Addr:           fmt.Sprintf(":%v", srv.config.PortWS),
 		Handler:        mux,
@@ -84,19 +90,31 @@ func (srv *SCServer) listenWS() {
 	srv.logger.Errorf("Stopped serving WS: %v.", wsServer.ListenAndServe())
 }
 
-// The handler for the '/' endpoint, for WebSocket connections to the server by
-// both AO and SpriteChat.
-func (srv *SCServer) wsEndpoint(w http.ResponseWriter, r *http.Request) {
-	// TODO: set deadline for IO ops?
-	// TODO: actually check the origin
-	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
+// The handler for the '/GAME' endpoint, for WebSocket connections to the server by SC.
+func (srv *SCServer) gameEndpoint(w http.ResponseWriter, r * http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		srv.logger.Debugf("WS: (/) Couldn't upgrade connection from %v (%v).", r.RemoteAddr, err)
 		return // bad request
 	}
-	client := client.NewWSClient(ws, srv.logger)
+	client := client.NewWSClient(ws, client.SCClient, srv.logger)
 	srv.logger.Debugf("New WS connection from %v (IPID: %v).", r.RemoteAddr, client.IPID())
+
+	go srv.handleWSClient(client)
+}
+
+// The handler for the '/' endpoint, for WebSocket connections to the server by AO.
+func (srv *SCServer) rootEndpoint(w http.ResponseWriter, r *http.Request) {
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		srv.logger.Debugf("WS: (/) Couldn't upgrade connection from %v (%v).", r.RemoteAddr, err)
+		return // bad request
+	}
+	client := client.NewWSClient(ws, client.AOClient, srv.logger)
+	srv.logger.Debugf("New WS connection from %v (IPID: %v).", r.RemoteAddr, client.IPID())
+
+    // The AO client still expects us to send this.
+    client.WriteAO("decryptor", "DEPRECATED")
 
 	go srv.handleWSClient(client)
 }
@@ -107,10 +125,6 @@ func (srv *SCServer) wsEndpoint(w http.ResponseWriter, r *http.Request) {
 func (srv *SCServer) handleWSClient(c *client.Client) {
 	srv.clients.Add(c)
 	defer srv.removeClient(c)
-	if err := srv.validateClient(c); err != nil {
-		srv.logger.Debugf("Couldn't determine client type from %v (IPID: %v) (%v). Disconnecting.", c.Addr(), c.IPID(), err)
-		return
-	}
 
 	switch c.Type() {
 	case client.AOClient:
@@ -121,7 +135,10 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 				return
 			}
 			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
-			go srv.handlePacketAO(c, *p)
+			// go srv.handlePacketAO(c, *p)
+            // TODO: handle packets with a queue? they should be read in order, but packet handling shouldn't
+            // cease the reading. this seems fine though
+            srv.handlePacketAO(c, *p)
 		}
 	case client.SCClient:
 		for {
@@ -138,62 +155,6 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 			go srv.handlePacketSC(c, *p)
 		}
 	}
-}
-
-// Validates a client as an AO or SC client.
-// Returns an error if the type can't be identified.
-func (srv *SCServer) validateClient(c *client.Client) error {
-	// SC client sends 'hello' packet, while AO client waits for 'decryptor' packet.
-	// So we wait a short time to see if we get a 'hello' packet - if not, we send a
-	// 'decryptor' packet.
-	b := make(chan []byte)
-	e := make(chan error)
-	go func(c *client.Client, b chan []byte, e chan error) {
-		mesg, err := c.ReadWS()
-		if err != nil {
-			b <- nil
-			e <- err
-		}
-
-		b <- mesg
-		e <- nil
-	}(c, b, e)
-
-	timer := time.NewTimer(250 * time.Millisecond)
-	var data []byte
-	var err error
-loop:
-	for {
-		select {
-		case <-timer.C:
-			// If the timer runs out, we see this packet to see if it's an AO client.
-			c.WriteAO("decryptor", "DEPRECATED")
-		case data = <-b:
-			// Break out of the for loop when we receive data.
-			err = <-e
-			break loop
-		}
-	}
-
-	if err != nil {
-		return fmt.Errorf("Failed to read message (%v).", err)
-	}
-
-	if p := packets.MakeAOPacket(data); p.Header == "HI" {
-		c.SetType(client.AOClient)
-		srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %s", c.Addr(), c.IPID(), data)
-		go srv.handlePacketAO(c, p)
-		return nil
-	}
-
-	p, err := packets.MakeSCPacket(data)
-	if err == nil && p.Header == "hello" {
-		c.SetType(client.SCClient)
-		srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), p)
-		go srv.handlePacketSC(c, p)
-		return nil
-	}
-	return fmt.Errorf("Client is neither AO nor SC (%v).", err)
 }
 
 // Handles the '/DATA' endpoint used by the SpriteChat client. It sends the server

@@ -136,8 +136,13 @@ func (srv *SCServer) handleRequestMusic(c *client.Client, contents []string) {
 }
 
 func (srv *SCServer) handleDone(c *client.Client, contents []string) {
+    // TODO: handle RD#% spam. this can make someone "join" many times
+    if c.Joined() {
+        return
+    }
 	// Client has committed to joining.
 	uid := srv.uidHeap.Take()
+    
 	srv.rooms[0].Enter(room.SpectatorCID, uid)
 	c.SetUID(uid)
 	c.SetCID(room.SpectatorCID)
