@@ -19,6 +19,8 @@ import (
 	"github.com/lambdcalculus/scs/pkg/packets"
 )
 
+const PacketQueueSize = 20
+
 // Defines whether the client is an AO or SpriteChat client.
 type ClientType int
 
@@ -44,7 +46,8 @@ const (
 
 // Represents a client's connection and attributes.
 type Client struct {
-	mu sync.Mutex
+	mu        sync.Mutex
+	PacketsCh chan packets.PacketAO // buffered channel for queueing packets
 
 	// connection data
 	wsConn     *websocket.Conn
@@ -94,6 +97,7 @@ type PairData struct {
 func NewTCPClient(conn net.Conn, log *logger.Logger) *Client {
 	ipid := hashIP(conn.RemoteAddr())
 	client := &Client{
+		PacketsCh:  make(chan packets.PacketAO, PacketQueueSize),
 		tcpConn:    conn,
 		addr:       conn.RemoteAddr().String(),
 		clientType: AOClient,
@@ -126,6 +130,7 @@ func NewWSClient(conn *websocket.Conn, typ ClientType, log *logger.Logger) *Clie
 
 	ipid := hashIP(conn.RemoteAddr())
 	client := &Client{
+		PacketsCh:  make(chan packets.PacketAO, PacketQueueSize),
 		wsConn:     conn,
 		addr:       conn.RemoteAddr().String(),
 		clientType: typ,

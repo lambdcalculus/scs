@@ -530,6 +530,7 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 			return
 		}
 		split := strings.Split(outMsg[1:], " ")
+		// TODO: this is blocking. make it not?
 		if len(split) > 1 {
 			srv.handleCommand(c, split[0], split[1:])
 		} else {

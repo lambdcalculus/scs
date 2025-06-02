@@ -54,21 +54,50 @@ func (srv *SCServer) handleTCPClient(c *client.Client) {
 	srv.clients.Add(c)
 	defer srv.removeClient(c)
 
-	// to this day, this is part of the handshake. lovely.
-	c.WriteAO("decryptor", "DEPRECATED")
-	for {
-		p, err := c.ReadAO()
-		if err != nil {
-			srv.logger.Debugf("Error in connection from %v (IPID: %v): %s.", c.Addr(), c.IPID(), err)
-		}
-		if p == nil {
-			if err == nil {
-				srv.logger.Debugf("EOF reached in connection from %v (IPID: %v).", c.Addr(), c.IPID())
+	// used to signal disconnection
+	disconnect := make(chan struct{})
+
+	// pushes packets into the client's queue
+	pushPackets := func() {
+		for {
+			p, err := c.ReadAO()
+			if err != nil {
+				srv.logger.Debugf("Error in connection from %v (IPID: %v): %s.", c.Addr(), c.IPID(), err)
 			}
-			break
+			if p == nil {
+				if err == nil {
+					srv.logger.Debugf("EOF reached in connection from %v (IPID: %v).", c.Addr(), c.IPID())
+				}
+				disconnect <- struct{}{}
+				break
+			}
+			srv.logger.Tracef("Received message from %v (IPID: %v) via TCP: %#v", c.Addr(), c.IPID(), *p)
+			c.PacketsCh <- *p
 		}
-		srv.logger.Tracef("Received message from %v (IPID: %v) via TCP: %#v", c.Addr(), c.IPID(), *p)
-		go srv.handlePacketAO(c, *p)
+	}
+
+	// pulls packets from the client's queue and handles them
+	pullPackets := func() {
+		for {
+			select {
+			case p := <-c.PacketsCh:
+				srv.handlePacketAO(c, p)
+			}
+		}
+	}
+
+	go pushPackets()
+	go pullPackets()
+
+	// begin handshake after we have set up the push/pull routines
+	c.WriteAO("decryptor", "DEPRECATED")
+
+loop:
+	for {
+		select {
+		case <-disconnect:
+			break loop
+		}
 	}
 }
 
@@ -127,17 +156,45 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 
 	switch c.Type() {
 	case client.AOClient:
-		for {
-			p, err := c.ReadAO()
-			if err != nil {
-				srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
-				return
+		// used to signal disconnection
+		disconnect := make(chan struct{})
+
+		// pushes packets into the client's queue
+		pushPackets := func() {
+			for {
+				p, err := c.ReadAO()
+				if err != nil {
+					srv.logger.Debugf("Error in connection to %v (IPID: %v): %v.", c.Addr(), c.IPID(), err)
+					disconnect <- struct{}{}
+					break
+				}
+				srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
+				c.PacketsCh <- *p
 			}
-			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
-			// go srv.handlePacketAO(c, *p)
-			// TODO: handle packets with a queue? they should be read in order, but packet handling shouldn't
-			// cease the reading. this seems fine though
-			srv.handlePacketAO(c, *p)
+		}
+
+		// pulls packets from the client's queue and handles them
+		pullPackets := func() {
+			for {
+				select {
+				case p := <-c.PacketsCh:
+					srv.handlePacketAO(c, p)
+				}
+			}
+		}
+
+		go pushPackets()
+		go pullPackets()
+
+		// begin handshake after we have set up the push/pull routines
+		c.WriteAO("decryptor", "DEPRECATED")
+
+	loop:
+		for {
+			select {
+			case <-disconnect:
+				break loop
+			}
 		}
 	case client.SCClient:
 		for {
@@ -151,7 +208,8 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 				break
 			}
 			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
-			go srv.handlePacketSC(c, *p)
+			// TODO: implement queue here too? but probably not ever going to need it
+			srv.handlePacketSC(c, *p)
 		}
 	}
 }
