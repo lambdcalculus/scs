@@ -570,6 +570,11 @@ func (srv *SCServer) handleMusic(c *client.Client, contents []string) {
 		srv.sendServerMessage(c, "You are only allowed to spectate in this area.")
 		return
 	}
+	if c.Room().DJLocked() && !c.HasPerms(perms.Music) {
+		c.Room().LogEvent(room.EventFail, "%s tried to play song '%s', but did not have permission.", c.LongString(), contents[0])
+		srv.sendServerMessage(c, "You do not have permission to change the music. Try promoting with /manage first.")
+		return
+	}
 
 	song := contents[0]
 	if !strings.Contains(song, ".") { // song name is a category, therefore stop

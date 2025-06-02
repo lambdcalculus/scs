@@ -10,6 +10,10 @@ name = "Lobby"
 # Default value: "".
 description = "The lobby."
 
+# Whether to lock DJ permissions by default. Makes it so special permissions are required to change music.
+# Default: false.
+lock_dj = false
+
 # The default background of the room.
 # Default value: "".
 background = "RV - Center Lobby"

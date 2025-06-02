@@ -60,6 +60,7 @@ var StringToLevel = map[string]logger.LogLevel{
 type Room struct {
 	Name            string `toml:"name"`
 	DefaultDesc     string `toml:"description"`
+	LockDJ          bool   `toml:"lock_dj"`
 	DefaultBg       string `toml:"background"`
 	LockBg          bool   `toml:"lock_background"`
 	DefaultAmbiance string `toml:"ambiance"`
@@ -85,6 +86,7 @@ func RoomDefault() *Room {
 	return &Room{
 		Name:            "Unknown",
 		DefaultAmbiance: "~stop.mp3",
+		LockDJ:          false,
 		LockBg:          true,
 		LockAmbiance:    true,
 		CharLists:       []string{"all"},

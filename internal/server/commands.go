@@ -123,7 +123,10 @@ func init() {
 		// /toggle (for bg/amb locks and other toggles)
 		// /invite
 		// /uninvite
-		// /play
+
+		"play": {(*SCServer).cmdPlay, 1, perms.PlayCommand,
+			"/play <song...>",
+			"Plays a song (can be a URL)."},
 	}
 }
 
@@ -781,6 +784,26 @@ func (srv *SCServer) cmdAmbiance(c *client.Client, args []string) (string, bool,
 		cl.UpdateAmbiance()
 	}
 	srv.sendServerMessageToRoom(c.Room(), "%s changed the ambiance to '%s'.", c.ShortString(), strings.Join(args, " "))
+	return "", true, false
+}
+
+func (srv *SCServer) cmdPlay(c *client.Client, args []string) (string, bool, bool) {
+	if c.Room().DJLocked() && !c.HasPerms(perms.Music) {
+		return "You do not have permission to change the music. Try promoting with /manage first.", false, false
+	}
+	// TODO: handle URLs more safely
+	// TODO: use an "UpdateSong" function instead of a packet?
+	// TODO: add options/arguments for looping and effects
+
+	song := strings.Join(args, " ")
+	c.Room().SetSong(song)
+
+	showname := c.Showname()
+	if showname == "" {
+		showname = c.Room().GetNameByCID(c.CID())
+	}
+
+	srv.writeToRoomAO(c.Room(), "MC", song, strconv.Itoa(c.CID()), showname, "1", "0", "0")
 	return "", true, false
 }
 

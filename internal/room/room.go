@@ -74,20 +74,21 @@ type Room struct {
 
 	// TODO: evidence? i kinda hate evidence
 
-	defBar   packets.BarHP
-	proBar   packets.BarHP
-	song     string
-	bg       string
-	lockBg   bool
-	ambiance string
-	lockAmb  bool
-	status   Status
-	lock     LockState
+	defBar    packets.BarHP
+	proBar    packets.BarHP
+	song      string
+	lockDJ    bool
+	bg        string
+	lockBg    bool
+	ambiance  string
+	lockAmb   bool
+	status    Status
+	lock      LockState
 
 	// could be another set...
 	users       []*user
 	managers    []*user // users with elevated permissions exclusive to this room
-	lastSpeaker int // CID
+	lastSpeaker int     // CID
 
 	// A list of invited UIDs. Used to decide who can speak when the room spectatable,
 	// or who can enter when it is locked.
@@ -199,6 +200,7 @@ func MakeRooms(roomsConf *config.RoomList, charsConf *config.Characters, musicCo
 			iniswapping:  conf.AllowIniswap,
 			shouting:     conf.AllowShouting,
 			immediate:    conf.ForceImmediate,
+			lockDJ:       conf.LockDJ,
 			bg:           conf.DefaultBg,
 			lockBg:       conf.LockBg,
 			defBar:       packets.BarMax,
@@ -379,6 +381,20 @@ func (r *Room) SetBackground(bg string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.bg = bg
+}
+
+// Returns whether DJing is locked.
+func (r *Room) DJLocked() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lockDJ
+}
+
+// Sets the DJ lock.
+func (r *Room) SetDJ(lock bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.lockDJ = lock
 }
 
 // Returns whether the background is locked.

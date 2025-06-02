@@ -29,6 +29,8 @@ const (
 	Lock        // Permission to change the room's lock.
 	Description // Permission to change the room's description.
 	Background  // Permission to change the room's background (necessary when there is a background lock).
+	Music       // Permission to change the room's music (necessary when there is a music lock).
+	PlayCommand // Permission to use /play.
 	Ambiance    // Permission to change the room's ambiance track (necessary when there is an ambiance lock).
 
 	// Admin stuff.
@@ -61,6 +63,8 @@ var stringToPerm = map[string]Mask{
 	"lock":           Lock,
 	"description":    Description,
 	"background":     Background,
+	"music":          Music,
+	"play_command":   PlayCommand,
 	"ambiance":       Ambiance,
 	"mod_database":   ModifyDatabase,
 	"reserved_names": ReservedNames,

@@ -20,7 +20,9 @@ permissions = ["all", "^mod_database", "^unban", "^reserved_names"]
 
 [[role]]
 # In this default configuration, this role is set as the `manager_role` in config.toml.
+# Any user can promote to a manager role if the room they are in allows it, but the added permissions
+# are exclusive to the room they are in.
 name = "Room Manager"
 
-permissions = ["status", "lock", "description", "background", "ambiance"]
+permissions = ["status", "lock", "description", "background", "music", "play_command", "ambiance"]
 
