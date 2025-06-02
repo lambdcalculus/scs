@@ -31,7 +31,7 @@ var unitMap = map[string]uint64{
 
 const (
     numbers = "0123456789"
-    letters = "ABCDEFGHIJKLMNOPQRSTUVabcdefghijklmnoprstuvwxyz"
+    letters = "ABCDEFGHIJKLMNOPQRSTUVXYZabcdefghijklmnoprstuvwxyz"
     alphanum = letters + numbers
 )
 
