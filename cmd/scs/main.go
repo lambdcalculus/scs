@@ -8,7 +8,8 @@ import (
 )
 
 func main() {
-    log := logger.NewLoggerOutputs(logger.LevelTrace, nil, "stdout", "log/server.log")
+	// default log level is 'info'
+    log := logger.NewLoggerOutputs(logger.LevelInfo, nil, "stdout", "log/server.log")
     serv, err := server.MakeServer(log)
     if err != nil {
         log.Fatalf("Couldn't make server (%v).", err)

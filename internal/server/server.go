@@ -34,11 +34,26 @@ type SCServer struct {
 	logger *logger.Logger
 }
 
+var stringToLevel = map[string] logger.LogLevel {
+	"trace": logger.LevelTrace,
+	"debug": logger.LevelDebug,
+	"info": logger.LevelInfo,
+	"warn": logger.LevelWarning,
+	"error": logger.LevelError,
+	"fatal": logger.LevelFatal,
+}
+
 // Tries to create and prepare the server. May fail if configs are not set appropriately.
 func MakeServer(log *logger.Logger) (*SCServer, error) {
 	conf, err := config.ReadServer()
 	if err != nil {
 		return nil, fmt.Errorf("server: Couldn't configure server (%w).", err)
+	}
+
+	if lvl, ok := stringToLevel[conf.LevelString]; ok {
+		log.SetLevel(lvl)
+	} else {
+		log.Warnf("Log level '%s' from config is not valid. Assuming default level 'info'.", conf.LevelString)
 	}
 
 	charsConf, err := config.ReadCharacters()

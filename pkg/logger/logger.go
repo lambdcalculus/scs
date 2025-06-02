@@ -138,6 +138,16 @@ func NewLoggerOutputs(level LogLevel, fmt FormatFunc, outputs ...string) *Logger
 	return NewLogger(fmt, level, outs...)
 }
 
+// Level returns the logger's level.
+func (logger *Logger) Level(level LogLevel) {
+	logger.level = level
+}
+
+// SetLevel sets the logger's level (not goroutine safe).
+func (logger *Logger) SetLevel(level LogLevel) {
+	logger.level = level
+}
+
 // Log formats a message and writes to the Logger's outputs if the level is appropriate.
 func (logger *Logger) Log(level LogLevel, msg string) {
 	// Format message right away in case a timestamp is used.
