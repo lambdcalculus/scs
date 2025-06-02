@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	// using `t`` since we only require the RPC types
-	t "github.com/lambdcalculus/scs/pkg/rpc"
 	"github.com/lambdcalculus/scs/pkg/logger"
+	t "github.com/lambdcalculus/scs/pkg/rpc"
 	"github.com/spf13/pflag"
 )
 

@@ -89,11 +89,11 @@ func roomFormatter(id int, name string) logger.FormatFunc {
 			msg = msg[:len(msg)-2]
 		}
 
-        logMsg := fmt.Sprintf("[%v] %s | %s : %v\n", id, name, logTime, msg)
+		logMsg := fmt.Sprintf("[%v] %s | %s : %v\n", id, name, logTime, msg)
 		if lvl >= logger.LevelError {
 			return "[ERROR] " + logMsg
 		}
-        return logMsg
+		return logMsg
 	}
 }
 
@@ -101,16 +101,16 @@ var allowedChars = "abcdefghijklmnopqrstuvwxyz0123456789_-.()"
 
 // Formats a string into a filename-friendly string, and also removes spaces.
 func slugify(s string) string {
-    s = strings.ToLower(s)
-    s = strings.ReplaceAll(s, " ", "_")
-    var out string
-    for _, c := range s {
-        for _, allowed := range allowedChars {
-            if c == allowed {
-                out += string(c)
-                break
-            }
-        }
-    }
-    return out
+	s = strings.ToLower(s)
+	s = strings.ReplaceAll(s, " ", "_")
+	var out string
+	for _, c := range s {
+		for _, allowed := range allowedChars {
+			if c == allowed {
+				out += string(c)
+				break
+			}
+		}
+	}
+	return out
 }

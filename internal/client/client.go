@@ -126,15 +126,15 @@ func NewWSClient(conn *websocket.Conn, typ ClientType, log *logger.Logger) *Clie
 
 	ipid := hashIP(conn.RemoteAddr())
 	client := &Client{
-		wsConn:    conn,
-		addr:      conn.RemoteAddr().String(),
+		wsConn:     conn,
+		addr:       conn.RemoteAddr().String(),
 		clientType: typ,
-		ipid:      ipid,
-		uid:       uid.Unjoined,
-		cid:       room.SpectatorCID,
-		mutesStop: make(chan struct{}),
-		pair:      PairData{WantedCID: room.SpectatorCID},
-		logger:    log,
+		ipid:       ipid,
+		uid:        uid.Unjoined,
+		cid:        room.SpectatorCID,
+		mutesStop:  make(chan struct{}),
+		pair:       PairData{WantedCID: room.SpectatorCID},
+		logger:     log,
 	}
 
 	client.updateMutes(client.mutesStop)

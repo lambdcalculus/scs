@@ -136,13 +136,13 @@ func (srv *SCServer) handleRequestMusic(c *client.Client, contents []string) {
 }
 
 func (srv *SCServer) handleDone(c *client.Client, contents []string) {
-    // TODO: handle RD#% spam. this can make someone "join" many times
-    if c.Joined() {
-        return
-    }
+	// TODO: handle RD#% spam. this can make someone "join" many times
+	if c.Joined() {
+		return
+	}
 	// Client has committed to joining.
 	uid := srv.uidHeap.Take()
-    
+
 	srv.rooms[0].Enter(room.SpectatorCID, uid)
 	c.SetUID(uid)
 	c.SetCID(room.SpectatorCID)
@@ -504,13 +504,13 @@ func (srv *SCServer) handleOOC(c *client.Client, contents []string) {
 		srv.sendServerMessage(c, reason)
 		return
 	}
-    for _, u := range srv.config.ReservedUsernames {
-        if strings.ToLower(outName) == strings.ToLower(u) && !c.HasPerms(perms.ReservedNames){
-            reason = fmt.Sprintf("'%s' is a reserved username.", outName)
-            srv.sendServerMessage(c, reason)
-            return
-        }
-    }
+	for _, u := range srv.config.ReservedUsernames {
+		if strings.ToLower(outName) == strings.ToLower(u) && !c.HasPerms(perms.ReservedNames) {
+			reason = fmt.Sprintf("'%s' is a reserved username.", outName)
+			srv.sendServerMessage(c, reason)
+			return
+		}
+	}
 	// TODO: make username check room-based?
 	// this would require making changes to moveClient.
 	for cl := range srv.clients.Clients() {

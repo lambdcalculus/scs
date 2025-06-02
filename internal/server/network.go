@@ -17,13 +17,13 @@ import (
 )
 
 var (
-    // The upgrader for WebSocket connections.
+	// The upgrader for WebSocket connections.
 	// TODO: set deadline for IO ops?
 	upgrader = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-        // TODO: actually check the origin
-        CheckOrigin: func(r *http.Request) bool { return true },
+		// TODO: actually check the origin
+		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 )
 
@@ -72,11 +72,10 @@ func (srv *SCServer) handleTCPClient(c *client.Client) {
 	}
 }
 
-
 func (srv *SCServer) listenWS() {
 	mux := http.NewServeMux()
-    mux.HandleFunc("/", srv.rootEndpoint)
-    mux.HandleFunc("/GAME", srv.gameEndpoint)
+	mux.HandleFunc("/", srv.rootEndpoint)
+	mux.HandleFunc("/GAME", srv.gameEndpoint)
 	mux.HandleFunc("/DATA", srv.dataEndpoint)
 	wsServer := &http.Server{
 		Addr:           fmt.Sprintf(":%v", srv.config.PortWS),
@@ -91,7 +90,7 @@ func (srv *SCServer) listenWS() {
 }
 
 // The handler for the '/GAME' endpoint, for WebSocket connections to the server by SC.
-func (srv *SCServer) gameEndpoint(w http.ResponseWriter, r * http.Request) {
+func (srv *SCServer) gameEndpoint(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		srv.logger.Debugf("WS: (/) Couldn't upgrade connection from %v (%v).", r.RemoteAddr, err)
@@ -113,8 +112,8 @@ func (srv *SCServer) rootEndpoint(w http.ResponseWriter, r *http.Request) {
 	client := client.NewWSClient(ws, client.AOClient, srv.logger)
 	srv.logger.Debugf("New WS connection from %v (IPID: %v).", r.RemoteAddr, client.IPID())
 
-    // The AO client still expects us to send this.
-    client.WriteAO("decryptor", "DEPRECATED")
+	// The AO client still expects us to send this.
+	client.WriteAO("decryptor", "DEPRECATED")
 
 	go srv.handleWSClient(client)
 }
@@ -136,9 +135,9 @@ func (srv *SCServer) handleWSClient(c *client.Client) {
 			}
 			srv.logger.Tracef("Received message from %v (IPID: %v) via WS: %#v", c.Addr(), c.IPID(), *p)
 			// go srv.handlePacketAO(c, *p)
-            // TODO: handle packets with a queue? they should be read in order, but packet handling shouldn't
-            // cease the reading. this seems fine though
-            srv.handlePacketAO(c, *p)
+			// TODO: handle packets with a queue? they should be read in order, but packet handling shouldn't
+			// cease the reading. this seems fine though
+			srv.handlePacketAO(c, *p)
 		}
 	case client.SCClient:
 		for {

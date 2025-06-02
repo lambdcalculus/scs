@@ -74,16 +74,16 @@ type Room struct {
 
 	// TODO: evidence? i kinda hate evidence
 
-	defBar    packets.BarHP
-	proBar    packets.BarHP
-	song      string
-	lockDJ    bool
-	bg        string
-	lockBg    bool
-	ambiance  string
-	lockAmb   bool
-	status    Status
-	lock      LockState
+	defBar   packets.BarHP
+	proBar   packets.BarHP
+	song     string
+	lockDJ   bool
+	bg       string
+	lockBg   bool
+	ambiance string
+	lockAmb  bool
+	status   Status
+	lock     LockState
 
 	// could be another set...
 	users       []*user

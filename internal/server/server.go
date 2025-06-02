@@ -34,11 +34,11 @@ type SCServer struct {
 	logger *logger.Logger
 }
 
-var stringToLevel = map[string] logger.LogLevel {
+var stringToLevel = map[string]logger.LogLevel{
 	"trace": logger.LevelTrace,
 	"debug": logger.LevelDebug,
-	"info": logger.LevelInfo,
-	"warn": logger.LevelWarning,
+	"info":  logger.LevelInfo,
+	"warn":  logger.LevelWarning,
 	"error": logger.LevelError,
 	"fatal": logger.LevelFatal,
 }
@@ -223,7 +223,7 @@ func (srv *SCServer) kickClient(c *client.Client, reason string) {
 // Disconnects and cleans up a client.
 func (srv *SCServer) removeClient(c *client.Client) {
 	if c.Room() != nil {
-        r := c.Room()
+		r := c.Room()
 		srv.moveClient(c, nil)
 		// Don't send disconnect message if someone only got to the character list.
 		if c.CharPicked() {

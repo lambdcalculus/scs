@@ -9,7 +9,7 @@ import (
 
 // If a client is connected but hasn't joined, its UID should be 0.
 const (
-    Unjoined = 0
+	Unjoined = 0
 )
 
 // The UIDHeap stores which UID values can be taken by new users.
@@ -22,8 +22,8 @@ type UIDHeap struct {
 // Creates a new [UIDHeap] that can give up to `max` UIDs (1, 2, ..., max).
 func CreateHeap(max int) *UIDHeap {
 	init := make([]int, max)
-    for i := 0; i < max; i++ {
-		init[i] = i+1
+	for i := 0; i < max; i++ {
+		init[i] = i + 1
 	}
 	return &UIDHeap{
 		heap: minheap.NewHeap(init),

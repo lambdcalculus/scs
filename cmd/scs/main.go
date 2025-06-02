@@ -1,19 +1,19 @@
 package main
 
 import (
-    "os"
+	"os"
 
-    "github.com/lambdcalculus/scs/internal/server"
-    "github.com/lambdcalculus/scs/pkg/logger"
+	"github.com/lambdcalculus/scs/internal/server"
+	"github.com/lambdcalculus/scs/pkg/logger"
 )
 
 func main() {
 	// default log level is 'info'
-    log := logger.NewLoggerOutputs(logger.LevelInfo, nil, "stdout", "log/server.log")
-    serv, err := server.MakeServer(log)
-    if err != nil {
-        log.Fatalf("Couldn't make server (%v).", err)
-        os.Exit(1)
-    }
-    log.Fatalf("Server stopped running: %s", serv.Run())
+	log := logger.NewLoggerOutputs(logger.LevelInfo, nil, "stdout", "log/server.log")
+	serv, err := server.MakeServer(log)
+	if err != nil {
+		log.Fatalf("Couldn't make server (%v).", err)
+		os.Exit(1)
+	}
+	log.Fatalf("Server stopped running: %s", serv.Run())
 }
