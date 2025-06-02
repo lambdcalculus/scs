@@ -230,7 +230,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 
 	// char name (i.e. the actual file)
 	iniswapping := (c.Room().GetNameByCID(c.CID()) != resp[2])
-	if !c.Room().AllowIniswapping() && iniswapping {
+	if !c.Room().IniswappingAllowed() && iniswapping {
 		reason = "Iniswapping is not allowed in this room!"
 		srv.sendServerMessage(c, reason)
 		return
@@ -246,7 +246,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 		srv.sendServerMessage(c, reason)
 		return
 	}
-	if !c.Room().AllowBlankpost() && resp[4] == "" {
+	if !c.Room().BlankpostingAllowed() && resp[4] == "" {
 		reason = "Blankposting is not allowed in this room!"
 		srv.sendServerMessage(c, reason)
 		return
@@ -293,7 +293,7 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// shout modifier
 	// old clients dont support the '4&custom' modifier
 	// but fuck them
-	if !c.Room().AllowShouting() && resp[10] != "0" {
+	if !c.Room().ShoutingAllowed() && resp[10] != "0" {
 		reason = "Shhh! Shouting is not allowed in this room!"
 		srv.sendServerMessage(c, reason)
 		return

@@ -112,10 +112,10 @@ func init() {
 			"/unmanage [uids...]\n" +
 				"/unmanage <'cid'|'uid'> <ids...>",
 			"Demotes user from manager. Only managers can use this command. Will use UID to demote others unless otherwise specified."},
-		"bg": {(*SCServer).cmdBg, 1, perms.Background,
+		"bg": {(*SCServer).cmdBg, 1, perms.None,
 			"/bg <background...>",
 			"Changes the room's background."},
-		"ambiance": {(*SCServer).cmdAmbiance, 1, perms.Ambiance,
+		"ambiance": {(*SCServer).cmdAmbiance, 1, perms.None,
 			"/ambiance <ambiance...>",
 			"Changes the room's ambiance."},
 		// /lock
@@ -234,7 +234,7 @@ func (srv *SCServer) cmdLogout(c *client.Client, args []string) (string, bool, b
 		}
 		c.RemoveRole(r)
 		if first {
-
+			// FIXME: there was supposed to be something here lol
 		}
 		msg.WriteString(fmt.Sprintf("Logged out from role '%s'", r.Name))
 	}
@@ -620,14 +620,14 @@ func (srv *SCServer) cmdGet(c *client.Client, args []string) (string, bool, bool
 func (srv *SCServer) cmdManage(c *client.Client, args []string) (string, bool, bool) {
 	if len(args) == 0 {
 		// promoting self
+		if c.Room().IsManager(c.UID()) {
+			return "You are already a manager in this room!", false, false
+		}
 		if len(c.Room().Managers()) != 0 && !c.HasPerms(perms.BypassLocks) {
 			return "This room already has a manager. Ask them to promote you.", false, false
 		}
-		if !c.Room().AllowManagers() && !c.HasPerms(perms.BypassLocks) {
+		if !c.Room().ManagersAllowed() && !c.HasPerms(perms.BypassLocks) {
 			return "Promoting to manager is not allowed in this room.", false, false
-		}
-		if c.Room().IsManager(c.UID()) {
-			return "You are already a manager in this room!", false, false
 		}
 
 		c.Room().AddManager(c.UID())
@@ -759,7 +759,7 @@ func (srv *SCServer) cmdUnmanage(c *client.Client, args []string) (string, bool,
 }
 
 func (srv *SCServer) cmdBg(c *client.Client, args []string) (string, bool, bool) {
-	if c.Room().BgLock() && !c.HasPerms(perms.Background) {
+	if c.Room().BgLocked() && !c.HasPerms(perms.Background) {
 		return "You do not have permission to change the background. Try promoting with /manage.", false, false
 	}
 	bg := strings.Join(args, " ")
@@ -772,7 +772,7 @@ func (srv *SCServer) cmdBg(c *client.Client, args []string) (string, bool, bool)
 }
 
 func (srv *SCServer) cmdAmbiance(c *client.Client, args []string) (string, bool, bool) {
-	if c.Room().AmbLock() && !c.HasPerms(perms.Ambiance) {
+	if c.Room().AmbianceLock() && !c.HasPerms(perms.Ambiance) {
 		return "You do not have permission to change the ambiance. Try promoting with /manage first.", false, false
 	}
 	amb := strings.Join(args, " ")

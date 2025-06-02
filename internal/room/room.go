@@ -120,7 +120,7 @@ const (
 	EventCharacter
 	EventMusic
 	EventOOC
-    EventServerMsg
+	EventServerMsg
 	EventCommand
 	EventManager
 	EventIC
@@ -137,7 +137,7 @@ var eventToString = map[Event]string{
 	EventCharacter: "CHAR  ",
 	EventMusic:     "MUSIC ",
 	EventOOC:       "OOC   ",
-    EventServerMsg: "SERVER",
+	EventServerMsg: "SERVER",
 	EventCommand:   "CMD   ",
 	EventManager:   "MGR   ",
 	EventIC:        "IC    ",
@@ -382,14 +382,14 @@ func (r *Room) SetBackground(bg string) {
 }
 
 // Returns whether the background is locked.
-func (r *Room) BgLock() bool {
+func (r *Room) BgLocked() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.lockBg
 }
 
 // Sets the background lock.
-func (r *Room) SetBgLock (lock bool) {
+func (r *Room) SetBgLock(lock bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lockBg = lock
@@ -457,21 +457,21 @@ func (r *Room) SetLastSpeaker(cid int) {
 }
 
 // Returns whether blankposts are allowed.
-func (r *Room) AllowBlankpost() bool {
+func (r *Room) BlankpostingAllowed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.blankposting
 }
 
 // Returns whether promoting to manager is allowed.
-func (r *Room) AllowManagers() bool {
+func (r *Room) ManagersAllowed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.managing
 }
 
 // Sets whether promoting to manager is allowed.
-func (r *Room) SetAllowManagers(allow bool) {
+func (r *Room) SetManagersAllowed(allow bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.managing = allow
@@ -508,7 +508,7 @@ func (r *Room) AddManager(uid int) {
 		return
 	}
 
-    r.LogEvent(EventManager, "UID %d is now managing this room.", uid)
+	r.LogEvent(EventManager, "UID %d is now managing this room.", uid)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -517,7 +517,7 @@ func (r *Room) AddManager(uid int) {
 
 // Removes a manager from the room.
 func (r *Room) RemoveManager(uid int) {
-    r.LogEvent(EventManager, "UID %d is no longer this room.", uid)
+	r.LogEvent(EventManager, "UID %d is no longer this room.", uid)
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, u := range r.managers {
@@ -528,14 +528,14 @@ func (r *Room) RemoveManager(uid int) {
 }
 
 // Returns whether iniswapping is allowed.
-func (r *Room) AllowIniswapping() bool {
+func (r *Room) IniswappingAllowed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.iniswapping
 }
 
 // Returns whether shouts are allowed.
-func (r *Room) AllowShouting() bool {
+func (r *Room) ShoutingAllowed() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.shouting
@@ -563,14 +563,14 @@ func (r *Room) SetAmbiance(s string) {
 }
 
 // Returns whether the ambiance is locked.
-func (r *Room) AmbLock() bool {
-    r.mu.Lock()
-    defer r.mu.Unlock()
-    return r.lockAmb
+func (r *Room) AmbianceLock() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lockAmb
 }
 
 // Sets the background lock.
-func (r *Room) SetAmbLock (lock bool) {
+func (r *Room) SetAmbLock(lock bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.lockAmb = lock
