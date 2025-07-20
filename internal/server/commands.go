@@ -6,6 +6,7 @@ package server
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -127,6 +128,11 @@ func init() {
 		"play": {(*SCServer).cmdPlay, 1, perms.PlayCommand,
 			"/play <song...>",
 			"Plays a song (can be a URL)."},
+
+		"roll": {(*SCServer).cmdRoll, 0, 0,
+			"/roll\n" +
+				"/roll [number]",
+			"Rolls one [number]-sided die, or a 20-sided die by default."},
 	}
 }
 
@@ -804,6 +810,27 @@ func (srv *SCServer) cmdPlay(c *client.Client, args []string) (string, bool, boo
 	}
 
 	srv.writeToRoomAO(c.Room(), "MC", song, strconv.Itoa(c.CID()), showname, "1", "0", "0")
+	return "", true, false
+}
+
+func (srv *SCServer) cmdRoll(c *client.Client, args []string) (string, bool, bool) {
+	var res int
+	var sides int = 20
+	if len(args) == 0 {
+		res = rand.Intn(20) + 1
+	} else {
+		num, err := strconv.Atoi(args[0])
+		if err != nil {
+			return "Argument must be a number.", false, false
+		} else if num <= 0 {
+			return "Number must be a positive integer.", false, false
+		}
+		res = rand.Intn(num) + 1
+		sides = num
+	}
+
+	srv.sendServerMessageToRoom(c.Room(), "%s rolled a %d out of %d.", c.ShortString(), res, sides)
+
 	return "", true, false
 }
 
