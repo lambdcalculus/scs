@@ -6,7 +6,7 @@ package server
 import (
 	"fmt"
 	"math"
-	"math/rand"
+	"math/rand/v2"
 	"strconv"
 	"strings"
 	"time"
@@ -129,10 +129,14 @@ func init() {
 			"/play <song...>",
 			"Plays a song (can be a URL)."},
 
-		"roll": {(*SCServer).cmdRoll, 0, 0,
+		"roll": {(*SCServer).cmdRoll, 0, perms.None,
 			"/roll\n" +
 				"/roll [number]",
 			"Rolls one [number]-sided die, or a 20-sided die by default."},
+
+		"coinflip": {(*SCServer).cmdCoin, 0, perms.None,
+			"/coinflip",
+			"Flips a coin."},
 	}
 }
 
@@ -816,20 +820,38 @@ func (srv *SCServer) cmdPlay(c *client.Client, args []string) (string, bool, boo
 func (srv *SCServer) cmdRoll(c *client.Client, args []string) (string, bool, bool) {
 	var res int
 	var sides int = 20
-	if len(args) == 0 {
-		res = rand.Intn(20) + 1
-	} else {
-		num, err := strconv.Atoi(args[0])
-		if err != nil {
-			return "Argument must be a number.", false, false
-		} else if num <= 0 {
-			return "Number must be a positive integer.", false, false
+	if len(args) >= 1 {
+		var err error
+		sides, err = strconv.Atoi(args[0])
+		if err != nil || sides <= 0 {
+			return "Argument must be a positive integer.", false, false
 		}
-		res = rand.Intn(num) + 1
-		sides = num
 	}
+	res = rand.IntN(sides) + 1
 
 	srv.sendServerMessageToRoom(c.Room(), "%s rolled a %d out of %d.", c.ShortString(), res, sides)
+
+	return "", true, false
+}
+
+func (srv *SCServer) cmdCoin(c *client.Client, _ []string) (string, bool, bool) {
+	var res string
+
+	if rand.IntN(2) == 0 {
+		if rand.IntN(20) == 19 {
+			res = "head"
+		} else {
+			res = "heads"
+		}
+	} else {
+		if rand.IntN(20) == 19 {
+			res = "tail"
+		} else {
+			res = "tails"
+		}
+	}
+
+	srv.sendServerMessageToRoom(c.Room(), "%s flipped a coin and got %s.", c.ShortString(), res)
 
 	return "", true, false
 }
