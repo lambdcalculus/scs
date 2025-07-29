@@ -240,6 +240,11 @@ func (srv *SCServer) handleIC(c *client.Client, contents []string) {
 	// TODO: narrator/first-person mode.
 
 	// message
+	// Don't allow empty messages. Blankposts must have a space.
+	if resp[4] == "" {
+		reason = "Empty message."
+		return
+	}
 	resp[4] = strings.TrimSpace(resp[4])
 	if len(resp[4]) > srv.config.MaxMsgSize {
 		reason = "Your message is too long!"
