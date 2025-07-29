@@ -219,7 +219,7 @@ func MakeRooms(roomsConf *config.RoomList, charsConf *config.Characters, musicCo
 	for i, conf := range roomsConf.Confs {
 		// We check adjancecies for the i-th room.
 		adjNames := conf.AdjacentRooms
-		adjRooms := findRooms(rooms, adjNames)
+		adjRooms := findRooms(rooms, adjNames, rooms[i].name)
 		rooms[i].adjacent = adjRooms
 		rooms[i].LogEventDebug(EventConfig, "Loaded configuration: %#v.", conf)
 		rooms[i].LogEventDebug(EventConfig, "Current settings: %#v", rooms[i])

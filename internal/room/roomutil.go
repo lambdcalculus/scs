@@ -56,8 +56,9 @@ func findMusicCategories(conf *config.Music, names []string) []*config.SongCateg
 	return cats
 }
 
-// Returns the rooms in the passed list that correspond to the list of names passed.
-func findRooms(list []*Room, names []string) []*Room {
+// Returns the rooms in the passed list that correspond to the list of names passed,
+// and a room to exclude.
+func findRooms(list []*Room, names []string, exclude string) []*Room {
 	set := make(map[string]struct{})
 	for _, n := range names {
 		set[n] = struct{}{}
@@ -66,9 +67,11 @@ func findRooms(list []*Room, names []string) []*Room {
 	var rooms []*Room
 	if _, ok := set["all"]; ok {
 		for _, r := range list {
-			rooms = append(rooms, r)
+			if r.name != exclude {
+				rooms = append(rooms, r)
+			}
 		}
-		return list
+		return rooms
 	}
 	for _, r := range list {
 		if _, ok := set[r.Name()]; ok {
