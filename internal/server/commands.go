@@ -134,6 +134,11 @@ func init() {
 				"/roll [number]",
 			"Rolls one [number]-sided die, or a 20-sided die by default."},
 
+		"rollp": {(*SCServer).cmdRollPrivate, 0, perms.None,
+			"/rollp\n" +
+				"/rollp [number]",
+			"Rolls one [number]-sided die, or a 20-sided die by default. Room managers can see result of the roll."},
+
 		"coinflip": {(*SCServer).cmdCoin, 0, perms.None,
 			"/coinflip",
 			"Flips a coin."},
@@ -830,6 +835,31 @@ func (srv *SCServer) cmdRoll(c *client.Client, args []string) (string, bool, boo
 	res = rand.IntN(sides) + 1
 
 	srv.sendServerMessageToRoom(c.Room(), "%s rolled a %d out of %d.", c.ShortString(), res, sides)
+
+	return "", true, false
+}
+
+func (srv *SCServer) cmdRollPrivate(c *client.Client, args []string) (string, bool, bool) {
+	var res int
+	var sides int = 20
+	if len(args) >= 1 {
+		var err error
+		sides, err = strconv.Atoi(args[0])
+		if err != nil || sides <= 0 {
+			return "Argument must be a positive integer.", false, false
+		}
+	}
+	res = rand.IntN(sides) + 1
+
+	srv.sendServerMessageToRoom(c.Room(), "Someone rolled.")
+	srv.sendServerMessage(c, "You rolled a %d out of %d.", res, sides)
+
+	for _, manID := range c.Room().Managers() {
+		m := srv.getByUID(manID)
+		if m != nil { // shouldn't fail, but just to make sure 
+			srv.sendServerMessage(m, "%s rolled a %d out of %d.", c.ShortString(), res, sides)
+		}
+	}
 
 	return "", true, false
 }
